@@ -69,11 +69,11 @@ std::vector<SerialPortInfo> MavLinkConnectionImpl::findSerialPorts(int vid, int 
         return result;
     }
 
-    SP_DEVINFO_DATA deviceInfo;
+    SP_DEVINFO_DATA deviceInfo = { 0 };
     deviceInfo.cbSize = sizeof(SP_DEVINFO_DATA);
     for (int devIndex = 0; SetupDiEnumDeviceInfo(classInfo, devIndex, &deviceInfo); devIndex++)
     {
-        ULONG size;
+        ULONG size = 0;
         HRESULT hr = CM_Get_Device_ID_Size(&size, deviceInfo.DevInst, 0);
         if (hr == CR_SUCCESS) {
             std::wstring buffer(size + 1, '\0');

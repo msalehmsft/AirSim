@@ -4,10 +4,17 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UwpDrone", "UwpDrone\UwpDrone.csproj", "{38395637-339B-4EC9-9B0A-C4E36A8598B7}"
+	ProjectSection(ProjectDependencies) = postProject
+		{8510C7A4-BF63-41D2-94F6-D8731D137A5A} = {8510C7A4-BF63-41D2-94F6-D8731D137A5A}
+		{735C65B3-907F-4877-8606-9565AB8708D8} = {735C65B3-907F-4877-8606-9565AB8708D8}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MavLinkCom", "..\MavLinkCom\MavLinkCom.vcxproj", "{8510C7A4-BF63-41D2-94F6-D8731D137A5A}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MavLinkUwp", "MavLinkUwp\MavLinkUwp.vcxproj", "{735C65B3-907F-4877-8606-9565AB8708D8}"
+	ProjectSection(ProjectDependencies) = postProject
+		{8510C7A4-BF63-41D2-94F6-D8731D137A5A} = {8510C7A4-BF63-41D2-94F6-D8731D137A5A}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
