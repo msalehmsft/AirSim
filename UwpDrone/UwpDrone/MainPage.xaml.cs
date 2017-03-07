@@ -13,6 +13,8 @@ using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 using MavLinkUwp;
+using System.Diagnostics;
+using System.Threading.Tasks;
 
 // The Blank Page item template is documented at http://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -29,12 +31,18 @@ namespace UwpDrone
             this.InitializeComponent();
         }
 
-        protected override void OnNavigatedTo(NavigationEventArgs e)
+        protected override async void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
 
-            mav.connectToMavLink();
+            bool connected = mav.connectToMavLink();
+            Debug.WriteLine($"Connected - {connected}");
 
+            mav.arm();
+
+            await Task.Delay(1000);
+
+            mav.disarm();
         }
 
     }
