@@ -6,14 +6,13 @@
 #include <ObjIdl.h>
 #include <SetupAPI.h>
 #include <Cfgmgr32.h>
+#define INITGUID
 #include <propkey.h>
+#include <Devpkey.h>
+#include <ntddser.h>
 
 using namespace mavlinkcom;
 using namespace mavlinkcom_impl;
-
-// {4d36e978-e325-11ce-bfc1-08002be10318}
-const GUID serialDeviceClass = { 0x4d36e978, 0xe325, 0x11ce, 0xBF, 0xC1, 0x08, 0x00, 0x2B, 0xE1, 0x03, 0x18 };
-
 
 bool parseVidPid(std::wstring deviceId, int* vid, int* pid)
 {
@@ -62,22 +61,55 @@ std::vector<SerialPortInfo> MavLinkConnectionImpl::findSerialPorts(int vid, int 
 {
     bool debug = false;
     std::vector<SerialPortInfo> result;
+    DEVINSTID pDeviceId = nullptr;
+    PWSTR DeviceInterfaceList = nullptr;
+    ULONG DeviceInterfaceListLength;
 
-    HDEVINFO classInfo = SetupDiGetClassDevsEx(&serialDeviceClass, NULL, NULL, DIGCF_PRESENT, NULL, NULL, NULL);
+    CONFIGRET cr = CM_Get_Device_Interface_List_Size(&DeviceInterfaceListLength, const_cast<GUID*>(&GUID_DEVINTERFACE_COMPORT), pDeviceId, CM_GET_DEVICE_INTERFACE_LIST_ALL_DEVICES);
 
-    if (classInfo == INVALID_HANDLE_VALUE) {
+    if (CR_SUCCESS != cr) {
         return result;
     }
 
-    SP_DEVINFO_DATA deviceInfo = { 0 };
-    deviceInfo.cbSize = sizeof(SP_DEVINFO_DATA);
-    for (int devIndex = 0; SetupDiEnumDeviceInfo(classInfo, devIndex, &deviceInfo); devIndex++)
-    {
+    DeviceInterfaceList = new WCHAR[DeviceInterfaceListLength];
+
+    cr = CM_Get_Device_Interface_List(const_cast<GUID*>(&GUID_DEVINTERFACE_COMPORT), pDeviceId, DeviceInterfaceList, DeviceInterfaceListLength, CM_GET_DEVICE_INTERFACE_LIST_ALL_DEVICES);
+    if (CR_SUCCESS != cr) {
+        delete[] DeviceInterfaceList;
+        return result;
+    }
+
+
+    for (PWSTR CurrentInterface = DeviceInterfaceList; *CurrentInterface; CurrentInterface += wcslen(CurrentInterface) + 1) {
         ULONG size = 0;
-        HRESULT hr = CM_Get_Device_ID_Size(&size, deviceInfo.DevInst, 0);
-        if (hr == CR_SUCCESS) {
+        DEVINST Devinst;
+        ULONG PropertySize;
+        DEVPROPTYPE PropertyType;
+        WCHAR CurrentDevice[MAX_DEVICE_ID_LEN];
+
+        PropertySize = sizeof(CurrentDevice);
+        cr = CM_Get_Device_Interface_Property(CurrentInterface,
+            &DEVPKEY_Device_InstanceId,
+            &PropertyType,
+            (PBYTE)CurrentDevice,
+            &PropertySize,
+            0);
+
+        if (cr != CR_SUCCESS) {
+            continue;
+        }
+
+        // Since the list of interfaces includes all interfaces, enabled or not, the
+        // device that exposed that interface may currently be non-present, so
+        // CM_LOCATE_DEVNODE_PHANTOM should be used.
+        cr = CM_Locate_DevNode(&Devinst,
+            CurrentDevice,
+            CM_LOCATE_DEVNODE_PHANTOM);
+
+        cr = CM_Get_Device_ID_Size(&size, Devinst, 0);
+        if (cr == CR_SUCCESS) {
             std::wstring buffer(size + 1, '\0');
-            hr = CM_Get_Device_ID(deviceInfo.DevInst, (PWSTR)buffer.c_str(), size + 1, 0);
+            cr = CM_Get_Device_ID(Devinst, (PWSTR)buffer.c_str(), size + 1, 0);
 
             // examples:
             // PX4: USB\VID_26AC&PID_0011\0
@@ -88,11 +120,10 @@ std::vector<SerialPortInfo> MavLinkConnectionImpl::findSerialPorts(int vid, int 
             if (parseVidPid(buffer, &dvid, &dpid) &&
                 ((dvid == vid && dpid == pid) || (vid == 0 && pid == 0)))
             {
-                DWORD keyCount = 0;
-                if (!SetupDiGetDevicePropertyKeys(classInfo, &deviceInfo, NULL, 0, &keyCount, 0)) {
-                    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
-                        continue;
-                    }
+                ULONG keyCount = 0;
+                cr = CM_Get_DevNode_Property_Keys(Devinst, NULL, &keyCount, 0);
+                if (cr != CR_BUFFER_SMALL) {
+                    continue;
                 }
 
                 SerialPortInfo portInfo;
@@ -101,7 +132,7 @@ std::vector<SerialPortInfo> MavLinkConnectionImpl::findSerialPorts(int vid, int 
 
                 DEVPROPKEY* keyArray = new DEVPROPKEY[keyCount];
 
-                if (SetupDiGetDevicePropertyKeys(classInfo, &deviceInfo, keyArray, keyCount, &keyCount, 0)) {
+                if (CR_SUCCESS == CM_Get_DevNode_Property_Keys(Devinst, keyArray, &keyCount, 0)) {
 
                     for (DWORD j = 0; j < keyCount; j++)
                     {
@@ -110,11 +141,11 @@ std::vector<SerialPortInfo> MavLinkConnectionImpl::findSerialPorts(int vid, int 
                         if (isItemNameProperty) {
                             ULONG bufferSize = 0;
                             DEVPROPTYPE propertyType;
-                            CM_Get_DevNode_Property(deviceInfo.DevInst, &keyArray[j], &propertyType, NULL, &bufferSize, 0);
-                            if (bufferSize > 0) {
+                            cr = CM_Get_DevNode_Property(Devinst, &keyArray[j], &propertyType, NULL, &bufferSize, 0);
+                            if (cr == CR_BUFFER_SMALL && bufferSize > 0) {
                                 BYTE* propertyBuffer = new BYTE[bufferSize];
-                                hr = CM_Get_DevNode_Property(deviceInfo.DevInst, &keyArray[j], &propertyType, propertyBuffer, &bufferSize, 0);
-                                if (hr == CR_SUCCESS) {
+                                cr = CM_Get_DevNode_Property(Devinst, &keyArray[j], &propertyType, propertyBuffer, &bufferSize, 0);
+                                if (cr == CR_SUCCESS) {
                                     std::wstring displayName((WCHAR*)propertyBuffer);
                                     parseDisplayName(displayName, &portInfo);
                                 }
@@ -130,6 +161,8 @@ std::vector<SerialPortInfo> MavLinkConnectionImpl::findSerialPorts(int vid, int 
             }
         }
     }
+
+    delete[] DeviceInterfaceList;
 
     return result;
 }
