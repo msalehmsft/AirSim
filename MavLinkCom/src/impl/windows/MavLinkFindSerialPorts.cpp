@@ -9,7 +9,6 @@
 #define INITGUID
 #include <propkey.h>
 #include <Devpkey.h>
-#include <ntddser.h>
 
 using namespace mavlinkcom;
 using namespace mavlinkcom_impl;
