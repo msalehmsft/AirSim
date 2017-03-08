@@ -45,11 +45,6 @@ public:
 		int writeBufferSize = 8192;
 
 		std::string port = portName;
-		if (port.substr(0, 4) != "\\\\.\\")
-		{
-			port.insert(0, "\\\\.\\");
-		}
-
 		handle = CreateFileA(port.c_str(), GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, 0);
 
 		if (handle == INVALID_HANDLE_VALUE)

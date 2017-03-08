@@ -9,53 +9,9 @@
 #define INITGUID
 #include <propkey.h>
 #include <Devpkey.h>
-#include <ntddser.h>
 
 using namespace mavlinkcom;
 using namespace mavlinkcom_impl;
-
-bool parseVidPid(std::wstring deviceId, int* vid, int* pid)
-{
-    const wchar_t* ptr = deviceId.c_str();
-    const wchar_t* end = ptr + deviceId.size();
-    // parse out the VID number
-    const wchar_t* pos = wcsstr(ptr, L"\\VID_");
-    if (pos == NULL) {
-        return false;
-    }
-    wchar_t* numberEnd = NULL;
-    long c = wcstol(pos + 5, &numberEnd, 16);
-    *vid = (int)c;
-
-    // now the PID 
-    pos = wcsstr(numberEnd, L"PID_");
-    if (pos == NULL) {
-        return false;
-    }
-
-    numberEnd = NULL;
-    c = wcstol(pos + 4, &numberEnd, 16);
-    *pid = (int)c;
-
-    return true;
-}
-
-void parseDisplayName(std::wstring displayName, SerialPortInfo* info)
-{
-    info->displayName = displayName;
-    const wchar_t* ptr = displayName.c_str();
-    // parse out the VID number
-    const wchar_t* pos = wcsrchr(ptr, '(');
-    if (pos == NULL) {
-        return;
-    }
-    pos++; // skip '('
-    const wchar_t* end = wcschr(pos, ')');
-    if (end != NULL) {
-        info->portName = std::wstring(pos, (size_t)(end - pos));
-    }
-}
-
 
 std::vector<SerialPortInfo> MavLinkConnectionImpl::findSerialPorts(int vid, int pid)
 {
@@ -78,7 +34,6 @@ std::vector<SerialPortInfo> MavLinkConnectionImpl::findSerialPorts(int vid, int 
         delete[] DeviceInterfaceList;
         return result;
     }
-
 
     for (PWSTR CurrentInterface = DeviceInterfaceList; *CurrentInterface; CurrentInterface += wcslen(CurrentInterface) + 1) {
         ULONG size = 0;
@@ -116,49 +71,79 @@ std::vector<SerialPortInfo> MavLinkConnectionImpl::findSerialPorts(int vid, int 
             // FTDI cable: FTDIBUS\VID_0403+PID_6001+FTUAN9UJA\0000"
             //printf("Found: %S\n", buffer.c_str());
 
-            int dvid = 0, dpid = 0;
-            if (parseVidPid(buffer, &dvid, &dpid) &&
-                ((dvid == vid && dpid == pid) || (vid == 0 && pid == 0)))
-            {
-                ULONG keyCount = 0;
-                cr = CM_Get_DevNode_Property_Keys(Devinst, NULL, &keyCount, 0);
-                if (cr != CR_BUFFER_SMALL) {
-                    continue;
-                }
+			// Also support ACPI defined UART ports
+			// "ACPI\\MSFT8000\\1"
+			SerialPortInfo portInfo;
+			DEVPROPTYPE propertyType;
 
-                SerialPortInfo portInfo;
-                portInfo.pid = dpid;
-                portInfo.vid = dvid;
+#if 0
+			// if you need the short port name
+			const DEVPROPKEY propkeyPortName = {
+				PKEY_DeviceInterface_Serial_PortName.fmtid,
+				PKEY_DeviceInterface_Serial_PortName.pid
+			};
+			WCHAR portName[512] = { 0 };
+			ULONG portNameBufferSize = sizeof(portName);
+			cr = CM_Get_Device_Interface_PropertyW(
+				CurrentInterface,
+				&propkeyPortName,
+				&propertyType,
+				reinterpret_cast<BYTE*>(&portName),
+				&portNameBufferSize,
+				0); // ulFlags
+#endif
 
-                DEVPROPKEY* keyArray = new DEVPROPKEY[keyCount];
+			portInfo.portName = std::wstring(CurrentInterface);
 
-                if (CR_SUCCESS == CM_Get_DevNode_Property_Keys(Devinst, keyArray, &keyCount, 0)) {
+			WCHAR displayName[512] = { 0 };
+			ULONG displayNameBufferSize = sizeof(displayName);
+			const DEVPROPKEY propkeyDisplayName = {
+				PKEY_ItemNameDisplay.fmtid,
+				PKEY_ItemNameDisplay.pid
+			};
+			cr = CM_Get_Device_Interface_PropertyW(
+				CurrentInterface,
+				&propkeyDisplayName,
+				&propertyType,
+				reinterpret_cast<BYTE*>(&displayName),
+				&displayNameBufferSize,
+				0); // ulFlags
 
-                    for (DWORD j = 0; j < keyCount; j++)
-                    {
-                        DEVPROPKEY* key = &keyArray[j];
-                        bool isItemNameProperty = (key->fmtid == PKEY_ItemNameDisplay.fmtid && key->pid == PKEY_ItemNameDisplay.pid);
-                        if (isItemNameProperty) {
-                            ULONG bufferSize = 0;
-                            DEVPROPTYPE propertyType;
-                            cr = CM_Get_DevNode_Property(Devinst, &keyArray[j], &propertyType, NULL, &bufferSize, 0);
-                            if (cr == CR_BUFFER_SMALL && bufferSize > 0) {
-                                BYTE* propertyBuffer = new BYTE[bufferSize];
-                                cr = CM_Get_DevNode_Property(Devinst, &keyArray[j], &propertyType, propertyBuffer, &bufferSize, 0);
-                                if (cr == CR_SUCCESS) {
-                                    std::wstring displayName((WCHAR*)propertyBuffer);
-                                    parseDisplayName(displayName, &portInfo);
-                                }
-                                delete[] propertyBuffer;
-                            }
-                        }
-                    }
-                }
+			portInfo.displayName = std::wstring(displayName);
 
-                result.push_back(portInfo);
+			uint16_t vid = 0;
+			ULONG vidBufferSize = sizeof(vid);
+			const DEVPROPKEY propkeyVid = {
+				PKEY_DeviceInterface_Serial_UsbVendorId.fmtid,
+				PKEY_DeviceInterface_Serial_UsbVendorId.pid
+			};
+			cr = CM_Get_Device_Interface_PropertyW(
+				CurrentInterface,
+				&propkeyVid,
+				&propertyType,
+				reinterpret_cast<BYTE*>(&vid),
+				&vidBufferSize,
+				0); // ulFlags
 
-                delete[] keyArray;
-            }
+			portInfo.vid = vid;
+
+			uint16_t pid = 0;
+			ULONG pidBufferSize = sizeof(pid);
+			const DEVPROPKEY propkeyPid = {
+				PKEY_DeviceInterface_Serial_UsbProductId.fmtid,
+				PKEY_DeviceInterface_Serial_UsbProductId.pid
+			};
+			cr = CM_Get_Device_Interface_PropertyW(
+				CurrentInterface,
+				&propkeyPid,
+				&propertyType,
+				reinterpret_cast<BYTE*>(&pid),
+				&pidBufferSize,
+				0); // ulFlags
+
+			portInfo.pid = pid;
+			
+			result.push_back(portInfo);
         }
     }
 
