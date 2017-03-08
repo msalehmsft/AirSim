@@ -1,26 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef MavLinkCom_Semaphore_hpp
-#define MavLinkCom_Semaphore_hpp
+#ifndef common_utils_Semaphore_hpp
+#define common_utils_Semaphore_hpp
 #include <memory>
 
 #ifdef __APPLE__
 #include <semaphore.h>
 #endif
 
-namespace mavlinkcom
+namespace mavlink_utils
 {
 	/*
 	A semaphore is used to signal an event across threads.  One thread blocks on Wait() until
 	the other thread calls Signal.  It is a counting semaphore so if the thread calls Signal
 	before the Wait() then the Wait() does not block.
 	*/
-	class MavLinkSemaphore
+	class Semaphore
 	{
 	public:
-		MavLinkSemaphore();
-		~MavLinkSemaphore();
+		Semaphore();
+		~Semaphore();
 
 		// Increment the semaphore count to unblock the next waiter (the next wait caller will return).
 		// Throws exception if an error occurs.
@@ -40,7 +40,4 @@ namespace mavlinkcom
 	};
 }
 
-#endif
-#ifdef __APPLE__
-int sem_timedwait(sem_t *sem, const struct timespec *abs_timeout);
 #endif

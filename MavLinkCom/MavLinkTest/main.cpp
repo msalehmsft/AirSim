@@ -4,6 +4,7 @@
 // PX4.cpp : Defines the entry point for the console application.
 
 #include "Utils.hpp"
+#include "FileSystem.hpp"
 #include "MavLinkConnection.hpp"
 #include "MavLinkVehicle.hpp"
 #include "MavLinkMessages.hpp"
@@ -16,10 +17,6 @@
 #include <map>
 #include <ctime>
 #include "UnitTests.h"
-STRICT_MODE_OFF
-#include <boost/algorithm/string.hpp>
-#include <boost/filesystem.hpp>
-STRICT_MODE_ON
 /* enable math defines on Windows */
 
 #define M_PI_2     1.57079632679489661923   // pi/2
@@ -34,7 +31,8 @@ static const int pixhawkFMUV1ProductId = 16;     ///< Product ID for PX4 FMU V1 
 #define MAV_TYPE_ENUM_END (static_cast<uint8_t>(MAV_TYPE::MAV_TYPE_ADSB)+1)
 #define MAV_STATE_ENUM_END (static_cast<uint8_t>(MAV_STATE::MAV_STATE_POWEROFF)+1)
 
-typedef common_utils::Utils Utils;
+typedef mavlink_utils::Utils Utils;
+typedef mavlink_utils::FileSystem FileSystem;
 typedef unsigned int uint;
 using namespace mavlinkcom; 
 
@@ -122,6 +120,7 @@ bool verbose = false;
 bool nsh = false;
 bool noparams = false;
 std::string logDirectory;
+bool jsonLogFormat = false;
 std::shared_ptr<MavLinkLog> inLogFile;
 std::shared_ptr<MavLinkLog> outLogFile;
 std::thread telemetry_thread;
@@ -134,42 +133,26 @@ void OpenLogFiles() {
 		std::time_t result = std::time(nullptr);
 		auto local = std::localtime(&result);
 
-		auto path = boost::filesystem::system_complete(logDirectory);
-		if (!boost::filesystem::is_directory(path))
-		{
-			if (!boost::filesystem::create_directory(path)) {
-				throw std::runtime_error(Utils::stringf("Failed to create log file directory '%s'.", path.generic_string().c_str()));
-			}
-		}
+		auto path = FileSystem::getFullPath(logDirectory);
+		FileSystem::ensureFolder(path);
 
-		path.append("logs", boost::filesystem::path::codecvt());
-		if (!boost::filesystem::is_directory(path))
-		{
-			if (!boost::filesystem::create_directory(path)) {
-				throw std::runtime_error(Utils::stringf("Failed to create log file directory '%s'.", path.generic_string().c_str()));
-			}
-		}
+		path = FileSystem::combine(path, "logs");
+		FileSystem::ensureFolder(path);
 
 		std::string today = Utils::stringf("%04d-%02d-%02d", local->tm_year + 1900, local->tm_mon + 1, local->tm_mday);
-		path.append(today, boost::filesystem::path::codecvt());
-		if (!boost::filesystem::is_directory(path))
-		{
-			if (!boost::filesystem::create_directory(path)) {
-				throw std::runtime_error(Utils::stringf("Failed to create log file directory '%s'.", path.generic_string().c_str()));
-			}
-		}
+		path = FileSystem::combine(path, today);
+		FileSystem::ensureFolder(path);
 
-		std::string input = Utils::stringf("%02d-%02d-%02d-input.mavlink", local->tm_hour, local->tm_min, local->tm_sec);
-		auto infile = boost::filesystem::system_complete(path);
-		infile.append(input, boost::filesystem::path::codecvt());
+		const char* ext = jsonLogFormat ? "json" : "mavlink";
+		std::string input = Utils::stringf("%02d-%02d-%02d-input.%s", local->tm_hour, local->tm_min, local->tm_sec, ext);
+		auto infile = FileSystem::combine(path, input);
 		inLogFile = std::make_shared<MavLinkLog>();
-		inLogFile->openForWriting(infile.generic_string());
+		inLogFile->openForWriting(infile, jsonLogFormat);
 
-		std::string output = Utils::stringf("%02d-%02d-%02d-output.mavlink", local->tm_hour, local->tm_min, local->tm_sec);
-		auto outfile = boost::filesystem::system_complete(path);
-		outfile.append(output, boost::filesystem::path::codecvt());
+		std::string output = Utils::stringf("%02d-%02d-%02d-output.%s", local->tm_hour, local->tm_min, local->tm_sec, ext);
+		auto outfile = FileSystem::combine(path, output);
 		outLogFile = std::make_shared<MavLinkLog>();
-		outLogFile->openForWriting(outfile.generic_string());
+		outLogFile->openForWriting(outfile, jsonLogFormat);
 
 	}
 }
@@ -506,6 +489,7 @@ void PrintUsage() {
 	printf("    -proxy:ipaddr[:port]                   - send all mavlink messages to and from remote node\n");
 	printf("    -local:ipaddr                          - specify local NIC address (default 127.0.0.1)\n");
 	printf("    -logdir:filename                       - specify local directory where mavlink logs are stored (default is no log files)\n");
+	printf("    -logformat:json                        - the default is binary, if you specify this option you will get mavlink logs in json format\n");
 	printf("    -noradio							   - disables RC link loss failsafe\n");
 	printf("    -nsh                                   - enter NuttX shell immediately on connecting with PX4\n");
 	printf("    -telemetry                             - generate telemetry mavlink messages for logviewer");
@@ -516,6 +500,7 @@ void PrintUsage() {
 bool ParseCommandLine(int argc, const char* argv[])
 {
 	const char* logDirOption = "logdir";
+	const char* logformatOption = "logformat";
 	const char* outLogFileOption = "outlogfile";
 
 	// parse command line
@@ -525,9 +510,8 @@ bool ParseCommandLine(int argc, const char* argv[])
 		if (arg[0] == '-' || arg[0] == '/')
 		{
 			std::string option(arg + 1);
-			std::vector<std::string> parts;
-			boost::algorithm::split(parts, option, boost::is_any_of(":,"));
-			std::string lower = boost::algorithm::to_lower_copy(parts[0]);
+			std::vector<std::string> parts = Utils::split(option, ":,", 2);
+			std::string lower = Utils::toLower(parts[0]);
 			if (lower == "udp")
 			{
 				offboard = true;
@@ -588,6 +572,22 @@ bool ParseCommandLine(int argc, const char* argv[])
 				{
 					std::string fileName(arg + 1 + strlen(logDirOption) + 1);
 					logDirectory = fileName;
+				}
+			}
+			else if (lower == logformatOption) {
+
+				if (parts.size() > 1)
+				{
+					std::string format(arg + 1 + strlen(logformatOption) + 1);
+					format = Utils::toLower(format);
+					if (format == "json") {
+						jsonLogFormat = true;
+					}
+					else {
+
+						printf("### Error: invalid logformat '%s', expecting 'json'\n", format.c_str());
+						return false;
+					}
 				}
 			}
 			else if (lower == "local")
@@ -816,11 +816,11 @@ bool connect(std::shared_ptr<MavLinkVehicle> mavLinkVehicle)
 {
 	if (offboard && serial)
 	{
-		printf("Cannot connect to local serial pixhawk and -offboard drone at the same time \n");
+		printf("Cannot connect to local -serial pixhawk and -udp drone at the same time \n");
 		return false;
 	}
 	if (!offboard && !serial && !server) {
-		printf("Must specify one of -serial, -offboard or -server otherwise we don't have a drone connection\n");
+		printf("Must specify one of -serial, -udp or -server otherwise we don't have a drone connection\n");
 		return false;
 	}
 	if (offboard && server)
@@ -991,7 +991,8 @@ int console() {
 		sendImage->setLogViewer(logViewer);
 	}
 
-	checkPulse(mavLinkVehicle);
+	// this stops us from being able to connect to SITL mode PX4.
+	//checkPulse(mavLinkVehicle);
 
 	int retries = 0;
 	while (retries++ < 5) {
@@ -1051,7 +1052,7 @@ int console() {
 			std::getline(std::cin, line);
 		}
 
-		line = common_utils::Utils::trim(line, ' ');
+		line = mavlink_utils::Utils::trim(line, ' ');
 
 		if (line.length() > 0)
 		{

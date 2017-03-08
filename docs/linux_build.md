@@ -12,7 +12,6 @@ sudo apt-get install cmake
 ````
 
 Then get the right version of Eigen, see [Install Eigen](install_eigen.md).  
-You also need the right version of Boost, see [Install Boost](install_boost.md).
 
 Next you need a version of GCC that supports `-std=c++14`.  Version 6, or newer should work.  
 If you don't have version 6 you can get it by running these commands:
@@ -49,7 +48,7 @@ make
 ## Reset cmake
 
 Just a tid bit for those not familiar with cmake, if for any reason you need to re-run cmake to regenerate new make files
-(perhaps you want to move boost or eigen) then the following is the equivalent of `clean` for cmake:
+(perhaps you want to move eigen) then the following is the equivalent of `clean` for cmake:
 ````
 rm CMakeCache.txt 
 rm -rf CMakeFiles

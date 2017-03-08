@@ -15,7 +15,7 @@
 #define ProductFolderName "AirSim" 
 #endif
     
-namespace common_utils { 
+namespace mavlink_utils {
 class FileSystem
 {
     typedef unsigned int uint;
@@ -55,6 +55,59 @@ public:
         return createDirectory(fullpath);
     }
 
+	// resolves the absolute path given a base path and a relative name, handles "..".
+	static std::string resolve(std::string path, std::string rel)
+	{
+		if (rel.size() > 0 && rel[0] == kPathSeparator)
+		{
+			// absolute path overrides cwd.
+			return rel;
+		}
+
+		auto currentPath = path;
+		auto srcPath = rel;
+		std::string sep;
+		sep.push_back(kPathSeparator);
+		auto vector = Utils::split(srcPath, sep.c_str(), 1);
+		for (auto iter = vector.begin(); iter != vector.end(); iter++)
+		{
+			if (*iter == "..") {
+				FileSystem::removeLeaf(currentPath);
+			}
+			else if (*iter == ".") {
+				// ignore this
+			}
+			else {
+				if (currentPath.size() == 0 || currentPath[currentPath.size() - 1] != kPathSeparator) {
+					currentPath.append(sep);
+				}
+				currentPath.append(*iter);
+			}
+		}
+
+		// PX4 doesn't like relative names (it horks the board, no more responses after that)
+		if (currentPath.size() == 0 || currentPath[0] != kPathSeparator) {
+			currentPath = sep + currentPath;
+		}
+		return currentPath;
+	}
+
+	static std::string getFullPath(const std::string path);
+
+	static bool isDirectory(const std::string path);
+
+	static bool exists(const std::string path);
+
+	static std::string getTempFolder() {
+#ifdef _WIN32
+		std::wstring userProfile = _wgetenv(L"TEMP");
+		std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+		return converter.to_bytes(userProfile);
+#else
+		return std::string("/tmp");
+#endif
+	}
+
     static std::string combine(const std::string parentFolder, const std::string child) {
         size_t len = parentFolder.size();
         if (len > 0 && parentFolder[len - 1] == kPathSeparator) {
@@ -71,10 +124,19 @@ public:
 
 	static void removeLeaf(std::string& path) {
 		size_t size = path.size();
-		size_t pos = path.find_last_of('/');
+		size_t pos = path.find_last_of(kPathSeparator);
 		if (pos != std::string::npos) {
 			path.erase(pos, size - pos);
 		}
+	}
+
+	static std::string getFileName(std::string fullPath) {
+		size_t size = fullPath.size();
+		size_t pos = fullPath.find_last_of(kPathSeparator);
+		if (pos != std::string::npos) {
+			return fullPath.substr(pos, size - pos);
+		}
+		return fullPath;
 	}
 
 
@@ -152,6 +214,8 @@ public:
         flog.exceptions(flog.exceptions() | std::ios::failbit | std::ifstream::badbit);
         return filepath;
     }
+
+	static void remove(std::string fileName);
 
     static std::string readLineFromFile(std::ifstream& file)
     {

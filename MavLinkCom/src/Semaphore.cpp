@@ -2,20 +2,21 @@
 // Licensed under the MIT License.
 
 // this is done this way so we can hide the boost dependency from our public SDK headers.
-#include "MavLinkSemaphore.hpp"
+#include "Semaphore.hpp"
 #include "Utils.hpp"
 
-using namespace mavlinkcom;
-using namespace common_utils;
+using namespace mavlink_utils;
 
 #ifdef __APPLE__
 #include <signal.h> //SIGALRM
+
+
 #endif
 
 #ifdef _WIN32
 #include <Windows.h>
 
-class MavLinkSemaphore::semaphore_impl
+class Semaphore::semaphore_impl
 {
 	HANDLE semaphore;
 
@@ -72,11 +73,87 @@ public:
 	}
 };
 
-#else // posix
+#elif defined(__APPLE__)
+
+#include <mach/mach.h>
+#include <mach/task.h>
+#include <mach/semaphore.h>
+
+class semaphore_impl
+{
+	semaphore_t semaphore;
+	task_t owner;
+public:
+
+	semaphore_impl() {
+		owner = mach_task_self();
+		kern_return_t rc = semaphore_create(owner, &semaphore, /* policy */ SYNC_POLICY_FIFO, /* value*/ 0);
+		if (rc != KERN_SUCCESS) {
+			throw std::runtime_error(Utils::stringf("OSX semaphore_create failed with errno %d\n", rc));
+		}
+	}
+
+	~semaphore_impl() {
+		semaphore_destroy(owner, semaphore);
+	}
+
+	void post()
+	{
+		kern_return_t rc = semaphore_signal(semaphore);
+		if (rc != KERN_SUCCESS)
+		{
+			throw std::runtime_error(Utils::stringf("OSX semaphore_signal failed with error %d\n", rc));
+		}
+	}
+
+	void wait()
+	{
+		kern_return_t rc = semaphore_wait(semaphore);
+		if (rc != KERN_SUCCESS)
+		{
+			throw std::runtime_error(Utils::stringf("OSX semaphore_wait failed with unexpected error %d\n", rc));
+		}
+	}
+
+	bool timed_wait(int milliseconds)
+	{
+		// convert to absolute time.
+		if (milliseconds < 0)
+		{
+			throw std::runtime_error("cannot wait for negative milliseconds");
+		}
+		auto absolute = std::chrono::system_clock::now().time_since_epoch() + std::chrono::milliseconds(milliseconds);
+		auto seconds = std::chrono::duration_cast<std::chrono::seconds>(absolute);
+		absolute = absolute - seconds;
+		auto nanoSecondsRemaining = std::chrono::duration_cast<std::chrono::nanoseconds>(absolute);
+
+		// use mach_timespec
+		mach_timespec_t mts;
+		mts.tv_nsec = nanoSecondsRemaining.count(); // nanoseconds
+		mts.tv_sec = seconds.count(); // seconds
+
+		kern_return_t rc = semaphore_timedwait(semaphore, mts);
+
+		switch (rc)
+		{
+		case KERN_SUCCESS:
+			return true;
+		case KERN_OPERATION_TIMED_OUT:
+			return false;
+		case KERN_ABORTED:
+			throw std::runtime_error("OSX semaphore_timedwait was aborted");
+		default:
+			throw std::runtime_error(Utils::stringf("OSX semaphore_timedwait failed with unexpected error %d", rc));
+		}
+
+	}
+
+};
+#else // assume posix
 
 #include <semaphore.h>
 
-class MavLinkSemaphore::semaphore_impl
+class Semaphore::semaphore_impl
 {
 	sem_t semaphore;
 public:
@@ -144,114 +221,26 @@ public:
 #endif
 
 
-MavLinkSemaphore::MavLinkSemaphore() {
+Semaphore::Semaphore() {
 
 	impl_.reset(new semaphore_impl());
 }
 
-MavLinkSemaphore::~MavLinkSemaphore()
+Semaphore::~Semaphore()
 {
 }
 
-void MavLinkSemaphore::wait()
+void Semaphore::wait()
 {
 	impl_->wait();
 }
 
-void MavLinkSemaphore::post()
+void Semaphore::post()
 {
 	impl_->post();
 }
 
-bool MavLinkSemaphore::timed_wait(int millisecondTimeout)
+bool Semaphore::timed_wait(int millisecondTimeout)
 {
 	return impl_->timed_wait(millisecondTimeout);
 }
-
-#ifdef __APPLE__
-struct CSGX__sem_timedwait_Info
-{
-    pthread_mutex_t MxMutex;
-    pthread_cond_t MxCondition;
-    pthread_t MxParent;
-    struct timespec MxTimeout;
-    bool MxSignaled;
-};
-
-void *CSGX__sem_timedwait_Child(void *MainPtr)
-{
-    CSGX__sem_timedwait_Info *TempInfo = (CSGX__sem_timedwait_Info *)MainPtr;
-
-    pthread_mutex_lock(&TempInfo->MxMutex);
-
-    // Wait until the timeout or the condition is signaled, whichever comes first.
-    int Result;
-    do
-    {
-        Result = pthread_cond_timedwait(&TempInfo->MxCondition, &TempInfo->MxMutex, &TempInfo->MxTimeout);
-        if (!Result)  break;
-    } while (1);
-    if (errno == ETIMEDOUT && !TempInfo->MxSignaled)
-    {
-        TempInfo->MxSignaled = true;
-        pthread_kill(TempInfo->MxParent, SIGALRM);
-    }
-
-    pthread_mutex_unlock(&TempInfo->MxMutex);
-
-    return NULL;
-}
-
-int sem_timedwait(sem_t *sem, const struct timespec *abs_timeout)
-{
-    // Quick test to see if a lock can be immediately obtained.
-    int Result;
-
-    do
-    {
-        Result = sem_trywait(sem);
-        if (!Result)  return 0;
-    } while (Result < 0 && errno == EINTR);
-
-    // Since it couldn't be obtained immediately, it is time to shuttle the request off to a thread.
-    // Depending on the timeout, this could take longer than the timeout.
-    CSGX__sem_timedwait_Info TempInfo;
-
-    pthread_mutex_init(&TempInfo.MxMutex, NULL);
-    pthread_cond_init(&TempInfo.MxCondition, NULL);
-    TempInfo.MxParent = pthread_self();
-    TempInfo.MxTimeout.tv_sec = abs_timeout->tv_sec;
-    TempInfo.MxTimeout.tv_nsec = abs_timeout->tv_nsec;
-    TempInfo.MxSignaled = false;
-
-    sig_t OldSigHandler = signal(SIGALRM, SIG_DFL);
-
-    pthread_t ChildThread;
-    pthread_create(&ChildThread, NULL, CSGX__sem_timedwait_Child, &TempInfo);
-
-    // Wait for the semaphore, the timeout to expire, or an unexpected error condition.
-    do
-    {
-        Result = sem_wait(sem);
-        if (Result == 0 || TempInfo.MxSignaled || (Result < 0 && errno != EINTR))  break;
-    } while (1);
-
-    // Terminate the thread (if it is still running).
-    TempInfo.MxSignaled = true;
-    int LastError = errno;
-
-    pthread_mutex_lock(&TempInfo.MxMutex);
-    pthread_cond_signal(&TempInfo.MxCondition);
-    pthread_mutex_unlock(&TempInfo.MxMutex);
-    pthread_join(ChildThread, NULL);
-    pthread_cond_destroy(&TempInfo.MxCondition);
-    pthread_mutex_destroy(&TempInfo.MxMutex);
-
-    // Restore previous signal handler.
-    signal(SIGALRM, OldSigHandler);
-
-    errno = LastError;
-
-    return Result;
-}
-#endif

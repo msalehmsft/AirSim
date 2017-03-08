@@ -4,12 +4,7 @@
 #ifndef SERIAL_COM_UDPCLIENTPORT_HPP
 #define SERIAL_COM_UDPCLIENTPORT_HPP
 
-#include <stdio.h>
-#include <thread>
-#include <memory>
-#include <mutex>
 #include "Port.h"
-#include "MavLinkSemaphore.hpp"
 
 class UdpClientPort : public Port
 {
@@ -34,6 +29,10 @@ public:
 	void close();
 
 	bool isClosed();
+
+
+	std::string remoteAddress();
+	int remotePort();
 
 private:
 	class UdpSocketImpl;

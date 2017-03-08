@@ -11,8 +11,8 @@
 #include <mutex>
 #include "MavLinkConnection.hpp"
 #include "MavLinkMessageBase.hpp"
-#include "MavLinkSemaphore.hpp"
-#include "../serial_com/TcpServer.hpp"
+#include "Semaphore.hpp"
+#include "../serial_com/TcpClientPort.hpp"
 
 using namespace mavlinkcom;
 
@@ -61,7 +61,7 @@ namespace mavlinkcom_impl {
 		uint8_t next_seq = 0;
 		std::thread read_thread;
 		std::string accept_node_name_;
-		std::shared_ptr<TcpServer> server_; 
+		std::shared_ptr<TcpClientPort> server_;
 		std::shared_ptr<MavLinkLog> sendLog_;
 
 		struct MessageHandlerEntry {
@@ -79,7 +79,7 @@ namespace mavlinkcom_impl {
 		std::thread publish_thread_;
 		std::queue<MavLinkMessage> msg_queue_;
 		std::mutex msg_queue_mutex_;
-		MavLinkSemaphore msg_available_;
+		mavlink_utils::Semaphore msg_available_;
 		bool waiting_for_msg_ = false;
 		std::mutex telemetry_mutex_;
 		MavLinkTelemetry telemetry_;
