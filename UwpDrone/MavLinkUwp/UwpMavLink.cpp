@@ -1,15 +1,22 @@
 ﻿#include "pch.h"
 #include "MavLinkConnection.hpp"
 #include "MavLinkVehicle.hpp"
+#include "src/serial_com/Port.h"
 #include "UwpMavLink.h"
+#include "ppltasks.h"
+#include "Semaphore.hpp"
 
 #define _USE_MATH_DEFINES
 #include <math.h>
 
+using namespace concurrency;
 using namespace MavLinkUwp;
 using namespace Platform;
 using namespace Windows::Foundation;
 using namespace mavlinkcom;
+using namespace Windows::Devices::SerialCommunication;
+using namespace Windows::Devices::Enumeration;
+using namespace Windows::Storage::Streams;
 
 static const int pixhawkVendorId = 9900;   ///< Vendor ID for Pixhawk board (V2 and V1) and PX4 Flow
 static const int pixhawkFMUV4ProductId = 18;     ///< Product ID for Pixhawk V2 board
@@ -17,52 +24,137 @@ static const int pixhawkFMUV2ProductId = 17;     ///< Product ID for Pixhawk V2 
 static const int pixhawkFMUV2OldBootloaderProductId = 22;     ///< Product ID for Bootloader on older Pixhawk V2 boards
 static const int pixhawkFMUV1ProductId = 16;     ///< Product ID for PX4 FMU V1 board
 
+static const std::wstring intelMavLink(L"UART0");
 
 const int LocalSystemId = 166;
 const int LocalComponentId = 1;
 
 
+void UwpMavLink::UwpMavLinkPort::connect(DataWriter^ w, DataReader^ r)
+{
+	_writer = w;
+	_reader = r;
+	/*
+	Platform::String^ selector = SerialDevice::GetDeviceSelector();
+	DeviceInformationCollection^ deviceCollection;
+	create_task(DeviceInformation::FindAllAsync(selector)).then([&](DeviceInformationCollection^ dc)
+	{
+		deviceCollection = dc;
+	}).wait();
+		
+
+	if (deviceCollection->Size == 0)
+		return;
+
+	for (unsigned int i = 0; i < deviceCollection->Size; ++i)
+	{
+		std::wstring name(deviceCollection->GetAt(i)->Name->Data());
+		std::wstring id(deviceCollection->GetAt(i)->Id->Data());
+
+		if (name.find_first_of(identifyingSubStr) != std::wstring::npos || 
+			id.find_first_of(identifyingSubStr) != std::wstring::npos)
+		{
+			create_task(SerialDevice::FromIdAsync(deviceCollection->GetAt(i)->Id)).then([&](SerialDevice^ device)
+			{
+				_device = device;
+				if (_device != nullptr)
+				{
+					TimeSpan ts;
+					ts.Duration = 5 * 1000000;
+
+					_device->BaudRate = 115200;
+					_device->Parity = SerialParity::None;
+					_device->DataBits = 8;
+					_device->StopBits = SerialStopBitCount::One;
+					_device->Handshake = SerialHandshake::None;
+					_device->ReadTimeout = ts;
+					_device->WriteTimeout = ts;
+					_device->IsRequestToSendEnabled = false;
+					//_device->IsDataTerminalReadyEnabled = false;
+
+					writer = ref new DataWriter(_device->OutputStream);
+					reader = ref new DataReader(_device->InputStream);
+					reader->InputStreamOptions = InputStreamOptions::Partial;
+
+				}
+			}).then([&]()
+			{
+				auto ret = reader->LoadAsync(1);
+				create_task(ret).then([&](unsigned int bytes)
+				{
+					uint8_t buf[50];
+					reader->ReadBytes(Platform::ArrayReference<BYTE>(buf, 50));
+				});
+
+			});
+
+			return;
+		}
+	}
+	*/
+}
+
+// write to the port, return number of bytes written or -1 if error.
+int UwpMavLink::UwpMavLinkPort::write(const uint8_t* ptr, int count)
+{
+	if (count < 0)
+	{
+		return 0;
+	}
+
+	Platform::Array<uint8_t>^ arr = ref new Platform::Array<uint8_t>(const_cast<uint8_t*>(ptr), (unsigned int)count);
+	_writer->WriteBytes(arr);
+
+	create_task(_writer->StoreAsync()).wait();
+
+	return count;
+}
+
+// read a given number of bytes from the port (blocking until the requested bytes are available).
+// return the number of bytes read or -1 if error.
+int UwpMavLink::UwpMavLinkPort::read(uint8_t* buffer, int bytesToRead)
+{
+	ZeroMemory(buffer, bytesToRead);
+
+	auto ret = _reader->LoadAsync(bytesToRead);
+	create_task(ret).then([&](unsigned int bytes)
+	{
+		_reader->ReadBytes(Platform::ArrayReference<BYTE>(buffer, bytes));
+		bytesToRead = bytes;
+	}).wait();
+
+	return bytesToRead;
+}
+
+// close the port.
+void UwpMavLink::UwpMavLinkPort::close()
+{
+	// ack!
+}
+
+bool UwpMavLink::UwpMavLinkPort::isClosed()
+{
+	return false;
+}
+
 UwpMavLink::UwpMavLink()
 {
 }
 
-std::string findPixhawk() 
-{
-
-    auto result = MavLinkConnection::findSerialPorts(0, 0);
-    for (auto iter = result.begin(); iter != result.end(); iter++)
-    {
-        SerialPortInfo info = *iter;
-        if (info.vid == pixhawkVendorId) {
-            if (info.pid == pixhawkFMUV4ProductId || info.pid == pixhawkFMUV2ProductId || info.pid == pixhawkFMUV2OldBootloaderProductId) {
-                return std::string(info.portName.begin(), info.portName.end());
-            }
-		} else if (info.pid == 0 && info.vid == 0 &&
-			info.portName.find(intelMavLink) != std::string::npos) {
-			return std::string(info.portName.begin(), info.portName.end());
-		}
-    }
-    return "";
-}
-
-std::shared_ptr<MavLinkConnection> connectSerial()
-{
-
-    std::string name = findPixhawk();
-    return MavLinkConnection::connectSerial("drone", name);
-}
-
-bool UwpMavLink::connectToMavLink()
+bool UwpMavLink::connectToMavLink(DataWriter^ w, DataReader^ r)
 {
     _vehicle = std::make_shared<MavLinkVehicle>(LocalSystemId, LocalComponentId);
 
-    _com = connectSerial();
+	std::shared_ptr<UwpMavLink::UwpMavLinkPort> mp = std::make_shared<UwpMavLink::UwpMavLinkPort>();
+	mp->connect(w ,r);
+
+	_com = MavLinkConnection::connectPort("drone", mp);
 
     _vehicle->connect(_com);
 
     _vehicle->startHeartbeat();
 
-	_vehicle->requestControl();
+	//_vehicle->requestControl();
 
 
     return _com != nullptr;

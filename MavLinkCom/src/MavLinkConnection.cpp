@@ -17,6 +17,11 @@ std::vector<SerialPortInfo> MavLinkConnection::findSerialPorts(int vid, int pid)
 	return MavLinkConnectionImpl::findSerialPorts(vid, pid);
 }
 
+std::shared_ptr<MavLinkConnection>  MavLinkConnection::connectPort(const std::string& nodeName, std::shared_ptr<Port> port)
+{
+	return MavLinkConnectionImpl::createConnection(nodeName, port);
+}
+
 std::shared_ptr<MavLinkConnection>  MavLinkConnection::connectSerial(const std::string& nodeName, std::string portName, int baudrate, const std::string initString)
 {
 	return MavLinkConnectionImpl::connectSerial(nodeName, portName, baudrate, initString);
