@@ -28,6 +28,7 @@ namespace mavlinkcom_impl {
 		static std::shared_ptr<MavLinkConnection>  connectLocalUdp(const std::string& nodeName, std::string localAddr, int localPort);
 		static std::shared_ptr<MavLinkConnection>  connectRemoteUdp(const std::string& nodeName, std::string localAddr, std::string remoteAddr, int remotePort);
 		static std::shared_ptr<MavLinkConnection>  connectTcp(const std::string& nodeName, std::string localAddr, const std::string& remoteIpAddr, int remotePort);
+		static std::shared_ptr<MavLinkConnection>  createConnection(const std::string& nodeName, std::shared_ptr<Port> port);
 
 		std::string getName();
 		int getTargetComponentId();
@@ -47,7 +48,6 @@ namespace mavlinkcom_impl {
 		void getTelemetry(MavLinkTelemetry& result);
 
 	private:
-		static std::shared_ptr<MavLinkConnection> createConnection(const std::string& nodeName, std::shared_ptr<Port> port);
         void joinLeftSubscriber(std::shared_ptr<MavLinkConnection> remote, std::shared_ptr<MavLinkConnection>con, const MavLinkMessage& msg);
         void joinRightSubscriber(std::shared_ptr<MavLinkConnection>con, const MavLinkMessage& msg);
 		void publishPackets();

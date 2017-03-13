@@ -83,7 +83,9 @@ namespace mavlinkcom {
         // NIC to use, for example, wifi versus hard wired ethernet adapter.  For localhost pass 127.0.0.1.
         static std::shared_ptr<MavLinkConnection>  connectTcp(const std::string& nodeName, std::string localAddr, const std::string& remoteIpAddr, int remotePort);
 
-        // instance methods
+		static std::shared_ptr<MavLinkConnection>  connectPort(const std::string& nodeName, std::shared_ptr<Port> port);
+		
+		// instance methods
         std::string getName();
         int getTargetComponentId();
         int getTargetSystemId();
