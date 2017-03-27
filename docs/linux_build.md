@@ -1,8 +1,14 @@
 # Linux Build
 
-## cmake    
+These are the instructions to build AirSim on a Linux machine.
+Note: you can also do this from [BashOnWindows](https://msdn.microsoft.com/en-us/commandline/wsl/install_guide)
+but make sure you are `not` using a `Visual Studio Command Prompt` because we don't want cmake to accodemtally find VC++ and try and use that.
 
-First you will need at least [cmake version  3.4](https://cmake.org/install/).  
+We need to use `clang compiler` because Unreal engine requires that.  
+
+## cmake
+
+First you will need at least [cmake version  3.5](https://cmake.org/install/). 
 If you don't have cmake version 3.* (for example, that is not the default on Ubuntu 14) you can run the following:
 
 ````
@@ -11,65 +17,43 @@ sudo apt-get update
 sudo apt-get install cmake
 ````
 
-Then get the right version of Eigen, see [Install Eigen](install_eigen.md).  
-
-Next you need a version of GCC that supports `-std=c++14`.  Version 6, or newer should work.  
-If you don't have version 6 you can get it by running these commands:
+Next you need a version of [CLang compiler](http://releases.llvm.org/3.9.0/tools/clang/docs/ReleaseNotes.html) that supports `-std=c++14`.  Version 3.9 or newer should work.   The following commands will get you clang 3.9:
 ````
 sudo apt-get update
-sudo apt-get install build-essential software-properties-common -y
-sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+sudo add-apt-repository ppa:ubuntu-toolchain-r/test
 sudo apt-get update
-sudo apt-get install gcc-snapshot -y
-sudo apt-get update
-sudo apt-get install gcc-6 g++-6 -y
+sudo apt-get install clang-3.9 clang++-3.9
 ````
 
-Now you can either do this, to make gcc 6 your default gcc compiler:
+If that doesn't work then try this (for Ubuntu 16 only):
 ````
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-6 60 --slave /usr/bin/g++ g++ /usr/bin/g++-6
+sudo apt-get update 
+wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add - 
+sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-3.9 main" 
+sudo apt-get install clang-3.9 clang++-3.9
 ````
-or you can add the following to the cmake command line instead:
+Now make clang-3.9 your default version of clang with this command:
 ````
--D CMAKE_C_COMPILER=gcc-6 -D CMAKE_CXX_COMPILER=g++-6
+sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-3.9 60 --slave /usr/bin/clang++ clang++ /usr/bin/clang++-3.9
 ````
+Next you will need the latest version of libc++ library, which you can get by running this:
 
-Then run cmake:
 ````
-cmake -D CMAKE_BUILD_TYPE=Debug CMakeLists.txt
-
-````
-
-Now you are ready to build:
-````
-make
+./cmake/getlibcxx.sh
 ````
 
-## Reset cmake
+Now you can run the build.sh at the root level of the AirSim repo:
 
-Just a tid bit for those not familiar with cmake, if for any reason you need to re-run cmake to regenerate new make files
-(perhaps you want to move eigen) then the following is the equivalent of `clean` for cmake:
 ````
-rm CMakeCache.txt 
-rm -rf CMakeFiles
+./build.sh
 ````
+This will create a `build_debug` folder containing the build output and the cmake generated make files.
 
+## Reset build
 
-## Windows cmake
+If for any reason you need to re-run cmake to regenerate new make files just deete the `build_debug` folder.
 
-You can also use cmake on Windows, but we have already checked in a .sln and .vcxproj files that are nicer than what
-cmake creates.  This is why we have separated the CMakeLists.txt files into a different directory, this ensures cmake 
-doesn't override our hand built VS project files.
+## Running Unreal on Linux
 
-This will create the debug build:
-
-    cmake -G "Visual Studio 14 2015 Win64" -D CMAKE_BUILD_TYPE=Debug CMakeLists.txt
-    msbuild /p:Platform=x64 /p:Configuration=Debug AirSim.sln
-    
-To build release bits you have to delete CMakeCache.txt (it's not clear that cmake supports building
-one set of vcxproj make files that can do both debug and release, if someone knows how please submit a pull request!)
-and run this:
-    
-    cmake -G "Visual Studio 14 2015 Win64" -D CMAKE_BUILD_TYPE=Release CMakeLists.txt
-    msbuild /p:Platform=x64 /p:Configuration=Release AirSim.sln
-
+Now you are ready to follow these instructions to get [Unreal working on Linux](https://wiki.unrealengine.com/Building_On_Linux#Clang) but note that everywhere
+you see Clang3.5 in the Unreal documentation replace that with clang3.9.

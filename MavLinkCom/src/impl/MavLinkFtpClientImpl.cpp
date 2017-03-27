@@ -31,6 +31,18 @@ struct FtpPayload {
 	uint8_t		data;		///< command data, varies by Opcode
 };
 
+void setPayloadFilename(FtpPayload* payload, const char* filename) {
+
+	const size_t maxFileName = 251 - sizeof(FtpPayload);
+	size_t len = strlen(filename);
+	if (len > maxFileName) {
+		len = maxFileName;
+	}
+	strncpy(reinterpret_cast<char*>(&payload->data), filename, len);
+	payload->size = static_cast<uint8_t>(len);
+
+}
+
 /// @brief Command opcodes
 enum Opcode : uint8_t {
 	kCmdNone,		///< ignored, always acked
@@ -70,7 +82,6 @@ enum ErrorCode : uint8_t {
 static const char	kDirentFile = 'F';	///< Identifies File returned from List command
 static const char	kDirentDir = 'D';	///< Identifies Directory returned from List command
 static const char	kDirentSkip = 'S';	///< Identifies Skipped entry from List command
-
 
 MavLinkFtpClientImpl::MavLinkFtpClientImpl(int system_id, int component_id)
 	: MavLinkNodeImpl(system_id, component_id)
@@ -215,11 +226,8 @@ void MavLinkFtpClientImpl::runStateMachine()
 
 		if (before == after)
 		{
-			if (rate == 0) {
-				rate = MAXIMUM_ROUND_TRIP_TIME;
-			}
-			if (totalSleep > (rate * TIMEOUT_INTERVAL)) {
-				// oops, not getting a response, so retry.
+			if (totalSleep > (MAXIMUM_ROUND_TRIP_TIME * TIMEOUT_INTERVAL)) {
+				printf("ftp command timeout, not getting a response, so retrying\n");
 				retry();
 				totalSleep = 0;
 			}
@@ -262,22 +270,19 @@ void MavLinkFtpClientImpl::removeFile()
 	ftp.target_component = getTargetComponentId();
 	ftp.target_system = getTargetSystemId();
 	payload->opcode = kCmdRemoveFile;
-	strcpy(reinterpret_cast<char*>(&payload->data), remote_file_.c_str());
-	payload->size = static_cast<uint8_t>(remote_file_.size());
+	setPayloadFilename(payload, remote_file_.c_str());
 	sendMessage(ftp);
 	recordMessageSent();
 }
 
 void MavLinkFtpClientImpl::listDirectory()
 {
-	retries_ = 0;
 	MavLinkFileTransferProtocol ftp;
 	FtpPayload* payload = reinterpret_cast<FtpPayload*>(&ftp.payload[0]);
 	ftp.target_component = getTargetComponentId();
 	ftp.target_system = getTargetSystemId();
 	payload->opcode = kCmdListDirectory;
-	strcpy(reinterpret_cast<char*>(&payload->data), remote_file_.c_str());
-	payload->size = static_cast<uint8_t>(remote_file_.size());
+	setPayloadFilename(payload, remote_file_.c_str());
 	payload->offset = file_index_;
 	sendMessage(ftp);
 	recordMessageSent();
@@ -312,7 +317,7 @@ bool MavLinkFtpClientImpl::createLocalFile()
 		{
 			// user was lazy, only told us where to put the file, so we borrow the name of the file
 			// from the source.
-			auto remote = FileSystem::getFileName(remote_file_);
+			auto remote = FileSystem::getFileName(normalize(remote_file_));
 			local_file_ = FileSystem::combine(path, remote);
 		}
 		else
@@ -364,8 +369,7 @@ void MavLinkFtpClientImpl::readFile()
 		ftp.target_component = getTargetComponentId();
 		ftp.target_system = getTargetSystemId();
 		payload->opcode = kCmdOpenFileRO;
-		strcpy(reinterpret_cast<char*>(&payload->data), remote_file_.c_str());
-		payload->size = static_cast<uint8_t>(remote_file_.size());
+		setPayloadFilename(payload, remote_file_.c_str());
 		sendMessage(ftp);
 		recordMessageSent();
 	}
@@ -485,7 +489,18 @@ void MavLinkFtpClientImpl::handleListResponse()
 	if (payload->offset != file_index_)
 	{
 		// todo: error handling here? sequence is out of order...
+		printf("list got offset %d, but expecting file index %d\n", payload->offset, file_index_);
 		retry();
+		return;
+	}
+
+	if (payload->offset == 0 && payload->size == 0) {
+		// directory must be empty then, can't do nextStep because
+		// it will just loop for ever re-requesting zero offset into
+		// empty directory.
+		reset();
+		success_ = true;
+		waiting_ = false;
 		return;
 	}
 
@@ -588,7 +603,7 @@ void MavLinkFtpClientImpl::handleWriteResponse()
 		int seq = static_cast<int>(payload->seq_number);
 		if (seq != sequence_ + 1)
 		{
-			printf("packet %d is out of sequence, expecting number %d\n", seq, sequence_ + 1);
+			printf("packet %d is out of sequence, expecting number %d\n", seq, sequence_ + 1); 
 			// perhaps this was a late response after we did a retry, so ignore it.
 			return;
 		}
@@ -634,8 +649,16 @@ void MavLinkFtpClientImpl::handleResponse(const MavLinkMessage& msg)
 			{
 				success_ = false;
 				if (progress_ != nullptr) {
-					progress_->error = error;
-					progress_->message = Utils::stringf("ftp error %d", error);
+					if (error = kErrFailErrno) {
+						const uint8_t* data = &(payload->data);
+						error = static_cast<int>(data[1]);
+						progress_->error = error;
+						progress_->message = Utils::stringf("ftp kErrFailErrno %d", error);
+					}
+					else {
+						progress_->error = error;
+						progress_->message = Utils::stringf("ftp error %d", error);
+					}
 				}
 			}
 			errorCode_ = error;
@@ -689,6 +712,7 @@ void MavLinkFtpClientImpl::MavLinkFtpClientImpl::retry()
 		errorCode_ = kErrRetriesExhausted;
 		success_ = false;
 		waiting_ = false;
+		reset();
 	}
 }
 
@@ -710,4 +734,28 @@ void MavLinkFtpClientImpl::recordMessageReceived()
 	{
 		progress_->longest_delay = static_cast<double>(duration.count());
 	}
+}
+
+
+std::string MavLinkFtpClientImpl::replaceAll(std::string s, char toFind, char toReplace) {
+	size_t pos = s.find_first_of(toFind, 0);
+	while (pos != std::string::npos) {
+		s.replace(pos, 1, 1, toReplace);
+		pos = s.find_first_of(toFind, 0);
+	}
+	return s;
+}
+
+std::string MavLinkFtpClientImpl::normalize(std::string arg) {
+	if (FileSystem::kPathSeparator == '\\') {
+		return replaceAll(arg, '/', '\\'); // make sure user input matches what FileSystem will do when resolving paths.
+	}
+	return arg;
+}
+
+std::string MavLinkFtpClientImpl::toPX4Path(std::string arg) {
+	if (FileSystem::kPathSeparator == '\\') {
+		return replaceAll(arg, '\\', '/'); // PX4 uses '/'
+	}
+	return arg;
 }

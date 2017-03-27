@@ -58,7 +58,7 @@ namespace LogViewer
             ChartStack.Visibility = Visibility.Collapsed;
             initialAttitude = ModelViewer.ModelAttitude;
             CameraPanel.Visibility = Visibility.Collapsed;
-            SystemConsole.Visibility = Visibility.Collapsed;            
+            SystemConsole.Visibility = Visibility.Collapsed;
         }
 
         private void OnWindowLocationChanged(object sender, EventArgs e)
@@ -109,7 +109,7 @@ namespace LogViewer
             ConnectorControl.Connected = true;
 
             QuadButton.IsChecked = true;
-            
+
             var channel = ConnectionPanel.Channel;
             channel.MessageReceived += OnMavlinkMessageReceived;
 
@@ -298,7 +298,7 @@ namespace LogViewer
 
         private void OnChannelDisconnected(object sender, EventArgs e)
         {
-            ConnectorControl.Connected = false;            
+            ConnectorControl.Connected = false;
             SystemConsole.Channel = null;
         }
 
@@ -308,18 +308,18 @@ namespace LogViewer
             Task.Run(async () => { await LoadBinaryFile(fileName); });
         }
 
+
         private async void OnOpenFile(object sender, RoutedEventArgs e)
         {
             OpenButton.IsEnabled = false;
 
             Microsoft.Win32.OpenFileDialog fo = new Microsoft.Win32.OpenFileDialog();
-            fo.Filter = "PX4 Log Files (*.px4log)|*.px4log|CSV Files (*.csv)|*.csv|bin files (*.bin)|*.bin|mavlink files (*.mavlink)|*.mavlink";
+            fo.Filter = "PX4 Log Files (*.px4log)|*.px4log|CSV Files (*.csv)|*.csv|bin files (*.bin)|*.bin|mavlink files (*.mavlink)|*.mavlink|JSON files (*.json)|*.json";
             fo.CheckFileExists = true;
             fo.Multiselect = true;
             if (fo.ShowDialog() == true)
             {
                 SystemConsole.Show();
-
                 foreach (var file in fo.FileNames)
                 {
                     switch (System.IO.Path.GetExtension(file).ToLowerInvariant())
@@ -334,17 +334,49 @@ namespace LogViewer
                         case ".mavlink":
                             await Task.Run(async () => { await LoadMavlinkFile(file); });
                             break;
+                        case ".json":
+                            await Task.Run(async () => { await LoadJSonFile(file); });
+                            break;
                         default:
                             MessageBox.Show("Do not know how to read files of type : " + System.IO.Path.GetExtension(file),
                                 "Unsupported file extension", MessageBoxButton.OK, MessageBoxImage.Exclamation);
                             break;
                     }
-                }            
+                }
+                ShowTotalFlightTime();
             }
             OpenButton.IsEnabled = true;
         }
 
-        private async Task LoadBinaryFile(string file)
+        private async Task LoadJSonFile(string file)
+        {
+            try
+            {
+                UiDispatcher.RunOnUIThread(() =>
+                {
+                    SystemConsole.Show();
+                });
+                AppendMessage("Loading " + file);
+                ShowStatus("Loading " + file);
+
+                JSonDataLog data = new JSonDataLog();
+                await data.Load(file, progress);
+
+                //logs.Add(data);
+                ShowSchema();
+
+                LoadFlights(data);
+
+            }
+            catch (Exception ex)
+            {
+                AppendMessage("### Error loading json file: " + ex.Message);
+            }
+            ShowStatus("Done Loading " + file);
+            UpdateButtons();
+        }
+
+    private async Task LoadBinaryFile(string file)
         {
             try
             {
@@ -360,32 +392,7 @@ namespace LogViewer
 
                 logs.Add(data);
                 ShowSchema();
-
-                UiDispatcher.RunOnUIThread(() =>
-                {
-                    // add flights 
-                    Flight entireLog = new Flight()
-                    {
-                        Name = "Log " + logs.Count,
-                        StartTime = data.StartTime,
-                        Duration = data.Duration
-                    };
-                    allFlights.Add(entireLog);
-
-                    foreach (var flight in data.GetFlights())
-                    {
-                        flight.Name = "Flight " + allFlights.Count;
-                        allFlights.Add(flight);
-                        AppendMessage("Motor started at {0} and ran for {1} ", flight.StartTime, flight.Duration);
-                    }
-
-                    if (myMap.Visibility == Visibility.Visible)
-                    {
-                        ShowMap();
-                    }
-
-                    ShowTotalFlightTime();
-                });
+                LoadFlights(data);
 
                 // remember successfully loaded log file.
                 Settings settings = await ((App)App.Current).LoadSettings();
@@ -398,6 +405,35 @@ namespace LogViewer
             }
             ShowStatus("Done Loading " + file);
             UpdateButtons();
+        }
+
+        private void LoadFlights(IDataLog data)
+        {
+            UiDispatcher.RunOnUIThread(() =>
+            {
+                // add flights 
+                Flight entireLog = new Flight()
+                {
+                    Name = "Log " + logs.Count,
+                    StartTime = data.StartTime,
+                    Duration = data.Duration
+                };
+                allFlights.Add(entireLog);
+
+                foreach (var flight in data.GetFlights())
+                {
+                    flight.Name = "Flight " + allFlights.Count;
+                    allFlights.Add(flight);
+                    AppendMessage("Motor started at {0} and ran for {1} ", flight.StartTime, flight.Duration);
+                }
+
+                if (myMap.Visibility == Visibility.Visible)
+                {
+                    ShowMap();
+                }
+                
+            });
+
         }
 
         private void ShowTotalFlightTime()
@@ -447,30 +483,7 @@ namespace LogViewer
                 ShowSchema();
 
                 Debug.WriteLine(data.StartTime.ToString());
-
-                UiDispatcher.RunOnUIThread(() =>
-                {
-                    foreach (var flight in data.GetFlights())
-                    {
-                        flight.Name = "Flight " + allFlights.Count;
-                        allFlights.Add(flight);
-                        AppendMessage("Motor started at {0} and ran for {1} ", flight.StartTime, flight.Duration);
-                    }
-
-                    if (myMap.Visibility == Visibility.Visible)
-                    {
-                        ShowMap();
-                    }
-
-                    foreach (var text in data.GetStatusMessages())
-                    {
-                        SystemConsole.Write(text + "\n");
-                    }
-
-                    ShowTotalFlightTime();
-                });
-
-
+                LoadFlights(data);
 
                 // remember successfully loaded log file.
                 Settings settings = await ((App)App.Current).LoadSettings();
@@ -855,7 +868,11 @@ namespace LogViewer
                 {
                     if (chartGroup != null)
                     {
-                        ChartStack.AddToGroup(chartGroup, chart);
+                        chartGroup.AddChart(chart);
+                        if (chartGroup.Parent == null)
+                        {
+                            ChartStack.AddChartGroup(chartGroup);
+                        }
                     }
                     else
                     {
@@ -1080,11 +1097,11 @@ namespace LogViewer
             // todo: remove the graphs...
         }
 
-        Grid chartGroup;
+        ChartGroup chartGroup;
 
         private void OnGroupChecked(object sender, RoutedEventArgs e)
         {
-            chartGroup = new Grid() { HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
+            chartGroup = new ChartGroup() { HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
         }
 
         private void OnGroupUnchecked(object sender, RoutedEventArgs e)

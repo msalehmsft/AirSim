@@ -50,6 +50,25 @@
     <ClInclude Include="include\common\UpdatableObject.hpp" />
     <ClInclude Include="include\common\VectorMath.hpp" />
     <ClInclude Include="include\common\common_utils\AsyncTasker.hpp" />
+    <ClInclude Include="include\controllers\rosflight\AirSimRosFlightCommLink.hpp" />
+    <ClInclude Include="include\controllers\rosflight\AirSimRosFlightBoard.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\board.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\commlink.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\commonstate.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\controller.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\dummyboard.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\dummycommlink.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\estimator.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\firmware.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\mixer.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\mode.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\mux.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\param.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\rc.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\sensors.hpp" />
+    <ClInclude Include="include\controllers\rosflight\firmware\turbotrig\turbotrig.h" />
+    <ClInclude Include="include\controllers\rosflight\firmware\turbotrig\turbovec.h" />
+    <ClInclude Include="include\controllers\rosflight\RosFlightDroneController.hpp" />
     <ClInclude Include="include\rpc\ControlServerBase.hpp" />
     <ClInclude Include="include\safety\CubeGeoFence.hpp" />
     <ClInclude Include="include\controllers\DroneCommon.hpp" />
@@ -88,12 +107,15 @@
     <ClInclude Include="include\sensors\magnetometer\MagnetometerSimpleParams.hpp" />
     <ClInclude Include="include\sensors\SensorBase.hpp" />
     <ClInclude Include="include\sensors\SensorCollection.hpp" />
+    <ClInclude Include="include\vehicles\configs\BlacksheepQuadX.hpp" />
+    <ClInclude Include="include\vehicles\configs\PX4ConfigCreator.hpp" />
     <ClInclude Include="include\vehicles\configs\Px4QuadX.hpp" />
     <ClInclude Include="include\controllers\ControllerBase.hpp" />
     <ClInclude Include="include\controllers\MotorDirectController.hpp" />
     <ClInclude Include="include\controllers\MotorDirectControllerParams.hpp" />
     <ClInclude Include="include\controllers\RpyDirectController.hpp" />
     <ClInclude Include="include\controllers\RpyDirectControllerParams.hpp" />
+    <ClInclude Include="include\vehicles\configs\RosFlightQuadX.hpp" />
     <ClInclude Include="include\vehicles\MultiRotor.hpp" />
     <ClInclude Include="include\vehicles\MultiRotorParams.hpp" />
     <ClInclude Include="include\vehicles\Rotor.hpp" />
@@ -192,7 +214,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>include;$(EIGEN_ROOT)\Eigen3;$(BOOST_ROOT);deps\rpclib\include;..\MavLinkCom\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>include;$(EIGEN_ROOT)\Eigen3;deps\rpclib\include;..\MavLinkCom\include</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <AdditionalOptions>/w34263 /w34266 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -216,7 +238,7 @@
       <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_SCL_SECURE_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>include;$(EIGEN_ROOT)\Eigen3;$(BOOST_ROOT);deps\rpclib\include;..\MavLinkCom\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>include;$(EIGEN_ROOT)\Eigen3;deps\rpclib\include;..\MavLinkCom\include</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <AdditionalOptions>/w34263 /w34266 %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>4100;4505;4820;4464;4514;4710;4571;%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -243,7 +265,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>include;$(EIGEN_ROOT)\Eigen3;$(BOOST_ROOT);deps\rpclib\include;..\MavLinkCom\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>include;$(EIGEN_ROOT)\Eigen3;deps\rpclib\include;..\MavLinkCom\include</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <AdditionalOptions>/w34263 /w34266 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -271,7 +293,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>NDEBUG;_SCL_SECURE_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>include;$(EIGEN_ROOT)\Eigen3;$(BOOST_ROOT);deps\rpclib\include;..\MavLinkCom\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>include;$(EIGEN_ROOT)\Eigen3;deps\rpclib\include;..\MavLinkCom\include</AdditionalIncludeDirectories>
       <TreatWarningAsError>true</TreatWarningAsError>
       <AdditionalOptions>/w34263 /w34266 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -291,6 +313,7 @@
     </Lib>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(MSBuildThisFileDirectory)\build\eigen.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>

@@ -22,7 +22,7 @@ namespace LogViewer.Model
         string file;
         DateTime startTime;
         TimeSpan duration;
-        List<Message> data;
+        List<Message> data = new List<Message>();
         LogItemSchema schema = new LogItemSchema() { Name = "MavlinkLog", Type = "Root" };
         Dictionary<Type, LogItemSchema> schemaCache = new Dictionary<Type, LogItemSchema>();
         Dictionary<string, MAVLink.mavlink_param_value_t> parameters = new Dictionary<string, MAVLink.mavlink_param_value_t>();
@@ -380,7 +380,7 @@ namespace LogViewer.Model
                 this.data = new List<Message>();
             }
 
-            DateTime time = epoch.AddMilliseconds(e.Time / 1000);
+            DateTime time = epoch.AddMilliseconds((double)e.Time / (double)1000);
 
             Message msg = new Model.MavlinkLog.Message()
             {
@@ -480,7 +480,7 @@ namespace LogViewer.Model
         public IEnumerable<string> GetStatusMessages()
         { 
             // compute the min/max servo settings.
-            foreach (var msg in this.data)
+            foreach (Message msg in this.data)
             {
                 if (msg.TypedValue is MAVLink.mavlink_statustext_t)
                 {

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "AirSim.h"
 #include "AirBlueprintLib.h"
 #include <exception>
@@ -140,6 +143,9 @@ void UAirBlueprintLib::FollowActor(AActor* follower, const AActor* followee, con
 {
     //can we see followee?
     FHitResult hit;
+    if (followee == nullptr) {
+        return;
+    }
     FVector next_location = followee->GetActorLocation() + offset;
     if (fixed_z)
         next_location.Z = fixed_z_val;
@@ -167,7 +173,7 @@ void UAirBlueprintLib::FollowActor(AActor* follower, const AActor* followee, con
 }
 
 template<class UserClass>
-FInputActionBinding& UAirBlueprintLib::BindActionTokey(const FName action_name, const FKey in_key, UserClass* actor, 
+FInputActionBinding& UAirBlueprintLib::BindActionToKey(const FName action_name, const FKey in_key, UserClass* actor, 
     typename FInputActionHandlerSignature::TUObjectMethodDelegate<UserClass>::FMethodPtr func)
 {
     FInputActionKeyMapping action(action_name, in_key);
@@ -177,4 +183,18 @@ FInputActionBinding& UAirBlueprintLib::BindActionTokey(const FName action_name, 
     controller->PlayerInput->AddActionMapping(action);
     return controller->InputComponent->
         BindAction(action_name, IE_Released, actor, func);
+}
+
+
+template<class UserClass>
+FInputAxisBinding& UAirBlueprintLib::BindAxisToKey(const FName axis_name, const FKey in_key, UserClass* actor, 
+    typename FInputAxisHandlerSignature::TUObjectMethodDelegate<UserClass>::FMethodPtr func)
+{
+    FInputAxisKeyMapping axis(axis_name, in_key);
+
+    APlayerController* controller = actor->GetWorld()->GetFirstPlayerController();
+
+    controller->PlayerInput->AddAxisMapping(axis);
+    return controller->InputComponent->
+        BindAxis(axis_name, actor, func);
 }

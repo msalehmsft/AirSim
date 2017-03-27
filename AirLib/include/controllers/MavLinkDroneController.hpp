@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef air_ros_MavLinkDroneController_hpp
-#define air_ros_MavLinkDroneController_hpp
+#ifndef msr_airlib_MavLinkDroneController_hpp
+#define msr_airlib_MavLinkDroneController_hpp
 
 #include "common/CommonStructs.hpp"
 #include "common/Common.hpp"
@@ -37,9 +37,14 @@ public:
         std::string serial_port = "*";
         int baud_rate = 115200;
 
-        //Used to connect via SITL: needed only if use_serial = false
+        //Used to connect to drone over UDP: needed only if use_serial = false
         std::string ip_address = "127.0.0.1";
         int ip_port = 14560;
+
+        // The PX4 SITL app requires receiving drone commands over a different mavlink channel.
+        // So set this to empty string to disable this separate command channel.
+        std::string sitl_ip_address = "127.0.0.1";
+        int sitl_ip_port = 14556;
 
         // The log viewer can be on a different machine, so you can configure it's ip address and port here.
         int logviewer_ip_port = 14388;
@@ -61,6 +66,8 @@ public:
         // then you will want to change the LocalHostIp accordingly.  This default only works when log viewer and QGC are also on the
         // same machine.  Whatever network you choose it has to be the same one for external
         std::string local_host_ip = "127.0.0.1";
+
+        std::string model = "Generic";
     };
 
 public:
@@ -75,8 +82,6 @@ public:
 
     //TODO: get rid of below methods?
     void sendImage(unsigned char data[], uint32_t length, uint16_t width, uint16_t height);
-    void getMocapPose(Vector3r& position, Quaternionr& orientation);
-    void sendMocapPose(const Vector3r& position, const Quaternionr& orientation);
     bool hasVideoRequest();
 
     //*** Start: VehicleControllerBase implementation ***//
@@ -92,7 +97,7 @@ public:
     virtual bool isSimulationMode() override;
     virtual void setOffboardMode(bool is_set) override;
     virtual void setSimulationMode(bool is_set) override;
-    virtual void setUserInputs(const vector<float>& inputs) override;
+    virtual Pose getDebugPose() override;
     //*** End: VehicleControllerBase implementation ***//
 
 
@@ -102,6 +107,7 @@ public:
     Vector3r getVelocity() override;
     Quaternionr getOrientation() override;
     RCData getRCData() override;
+    void setRCData(const RCData& rcData) override;
     double timestampNow() override;
 
     bool armDisarm(bool arm, CancelableBase& cancelable_action) override;
@@ -111,18 +117,19 @@ public:
     bool hover(CancelableBase& cancelable_action) override;
     GeoPoint getHomePoint() override;
     GeoPoint getGpsLocation() override;
-	virtual void reportTelemetry(float renderTime) override;
+    virtual void reportTelemetry(float renderTime) override;
 
     float getCommandPeriod() override;
     float getTakeoffZ() override;
     float getDistanceAccuracy() override;
+
+    virtual bool loopCommandPre() override;
+    virtual void loopCommandPost() override;
 protected: 
     void commandRollPitchZ(float pitch, float roll, float z, float yaw) override;
     void commandVelocity(float vx, float vy, float vz, const YawMode& yaw_mode) override;
     void commandVelocityZ(float vx, float vy, float z, const YawMode& yaw_mode) override;
     void commandPosition(float x, float y, float z, const YawMode& yaw_mode) override;
-    void commandVirtualRC(const RCData& rc_data) override;
-    void commandEnableVirtualRC(bool enable) override;
     const VehicleParams& getVehicleParams() override;
     //*** End: DroneControllerBase implementation ***//
 

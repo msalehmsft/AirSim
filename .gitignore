@@ -24,6 +24,8 @@ bld/
 [Oo]bj/
 Intermediate/
 Binaries/
+llvm-build/
+llvm-source/
 
 # CMake files
 CMakeFiles/
@@ -305,3 +307,4 @@ deps/
 /cmake/output/lib
 /AirLib/include/controllers/html
 /AirLib/include/controllers/latex
+/Eigen3

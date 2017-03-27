@@ -62,13 +62,16 @@ pushd $build_dir
 # final linking of the binaries can fail due to a missing libc++abi library
 # (happens on Fedora, see https://bugzilla.redhat.com/show_bug.cgi?id=1332306).
 # So we only build the libraries here for now
-make -j8 AirLib MavLinkCom
+make 
 popd &>/dev/null
 
 
 mkdir -p AirLib/lib/x64/Debug
-mkdir -p AirLib/deps/rpclib
-mkdir -p AirLib/deps/MavLinkCom
+mkdir -p AirLib/deps/rpclib/lib
+mkdir -p AirLib/deps/MavLinkCom/lib
+cp $build_dir/output/lib/libAirLib.a AirLib/lib
+cp $build_dir/output/lib/libMavLinkCom.a AirLib/deps/MavLinkCom/lib
+cp $build_dir/output/lib/libAirSim-rpclib.a AirLib/deps/rpclib/lib/librpc.a
 rsync -a --delete $build_dir/output/lib/ AirLib/lib/x64/Debug
 rsync -a --delete external/rpclib/include AirLib/deps/rpclib
 rsync -a --delete MavLinkCom/include AirLib/deps/MavLinkCom

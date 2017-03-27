@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "SerialPort.hpp"
 
 #ifdef _WIN32
@@ -260,7 +263,7 @@ public:
 		int readTimeout = -1;
 		int writeTimeout = -1;
 
-		fd = open(portName, O_RDWR | O_NONBLOCK | O_NOCTTY);
+		fd = open(portName, O_RDWR | O_NOCTTY);
 		if (fd == -1)
 		{
 			return -1;

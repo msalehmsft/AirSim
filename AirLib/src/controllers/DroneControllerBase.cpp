@@ -38,6 +38,17 @@ void DroneControllerBase::setSafetyEval(const shared_ptr<SafetyEval> safety_eval
     safety_eval_ptr_ = safety_eval_ptr;
 }
 
+bool DroneControllerBase::loopCommandPre()
+{
+    //no-op by default. derived class can override it if needed
+    return true;
+}
+
+void DroneControllerBase::loopCommandPost()
+{
+    //no-op by default. derived class can override it if needed
+}
+
 bool DroneControllerBase::moveByAngle(float pitch, float roll, float z, float yaw, float duration
     , CancelableBase& cancelable_action)
 {
@@ -690,6 +701,13 @@ vector<uint8_t> DroneControllerBase::getImageForCamera(int camera_id, ImageType 
 
     return result;
 }
+
+Pose DroneControllerBase::getDebugPose()
+{
+    //by default indicate that we don't have alternative pose info
+    return Pose::nanPose();
+}
+
 
 }} //namespace
 #endif

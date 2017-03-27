@@ -46,13 +46,18 @@ namespace mavlinkcom
 		uint8_t msgid = 0;
 		uint8_t sysid = 0;   ///< ID of message sender system/aircraft
 		uint8_t compid = 0;  ///< ID of the message sender component
+        uint64_t timestamp = 0;
 
 		// unpack the given message
 		void decode(const MavLinkMessage& msg);
 
+		// encode this message into given message buffer
+		void encode(MavLinkMessage& msg, int seq) const;
+
 		// find what type of message this is and decode it on the heap (call delete when you are done with it).
 		static MavLinkMessageBase* lookup(const MavLinkMessage& msg);
 		virtual std::string toJSon() = 0;
+        virtual ~MavLinkMessageBase() {}
 	protected:
 		virtual int pack(char* buffer) const = 0;
 		virtual int unpack(const char* buffer) = 0;
@@ -96,8 +101,6 @@ namespace mavlinkcom
 		std::string uint16_t_array_tostring(int len, const uint16_t* field);
 		std::string float_array_tostring(int len, const float* field);
 		std::string float_tostring(float value);
-
-		friend class mavlinkcom_impl::MavLinkConnectionImpl;
 	};
 
 	// Base class for all strongly typed MavLinkCommand classes defined in MavLinkMessages.hpp
@@ -131,6 +134,8 @@ namespace mavlinkcom
 		long crcErrors;			 // # crc errors detected in mavlink stream since the last telemetry message
 		long handlerMicroseconds; // total time spent in the handlers in microseconds since the last telemetry message
 		long renderTime;         // total time spent rendering frames since the last telemetry message
+        const char* wifiInterfaceName; // the name of the wifi interface we are measuring RSSI on.
+        int wifiRssi;            // if this device is communicating over wifi this is the signal strength.
 		virtual std::string toJSon() {
 
 			std::ostringstream result;
@@ -141,6 +146,7 @@ namespace mavlinkcom
 			result << "\"crcErrors\":" << this->crcErrors << ",";
 			result << "\"handlerMicroseconds\":" << this->handlerMicroseconds << ",";
 			result << "\"renderTime\":" << this->renderTime;
+            result << "\"wifiRssi\":" << this->wifiRssi;
 			result << "}";
 			return result.str();
 		}

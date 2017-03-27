@@ -14,9 +14,21 @@
 #include <vector>
 #include <string.h>
 #include <functional>
+#include <mutex>
 #include <map>
 #include <ctime>
 #include "UnitTests.h"
+
+#if defined(_WIN32)
+#include <filesystem>
+// for some unknown reason, VC++ doesn't define this handy macro...
+#define __cpp_lib_experimental_filesystem 201406
+#else
+#if __has_include(<experimental/filesystem>)
+#include <experimental/filesystem>
+#endif
+#endif
+
 /* enable math defines on Windows */
 
 #define M_PI_2     1.57079632679489661923   // pi/2
@@ -120,12 +132,70 @@ bool verbose = false;
 bool nsh = false;
 bool noparams = false;
 std::string logDirectory;
+std::string ifaceName; 
 bool jsonLogFormat = false;
+bool convertExisting = false;
 std::shared_ptr<MavLinkLog> inLogFile;
 std::shared_ptr<MavLinkLog> outLogFile;
 std::thread telemetry_thread;
 bool telemetry = false;
+std::mutex logLock;
 
+#if defined(__cpp_lib_experimental_filesystem)
+
+using namespace std::experimental::filesystem::v1;
+
+void ConvertLogFileToJson(std::string logFile)
+{
+    std::string fullPath = FileSystem::getFullPath(logFile);
+    printf("Converting logfile: %s...", fullPath.c_str());
+    try {
+        MavLinkMessage msg;
+
+        MavLinkLog log;
+        log.openForReading(fullPath);
+        
+        path jsonPath(logFile);
+        jsonPath.replace_extension(".json");
+
+        MavLinkLog jsonLog;
+        jsonLog.openForWriting(jsonPath.generic_string(), true);
+
+        uint64_t timestamp;
+        while (log.read(msg, timestamp)) {
+            jsonLog.write(msg, timestamp);
+        }
+        jsonLog.close();
+        printf("done\n");
+    }
+    catch (std::exception&ex) {
+        printf("error: %s\n", ex.what());
+    }
+}
+
+void ConvertLogFilesToJson(std::string directory)
+{
+    printf("converting log files in: %s\n", directory.c_str());
+    if (directory == "") {
+        printf("Please provide the -logdir option\n");
+        return;
+    }
+    auto fullPath = FileSystem::getFullPath(directory);
+    if (!FileSystem::isDirectory(fullPath)) {
+        printf("-logdir:%s, does not exist\n", fullPath.c_str());
+    }
+    path dirPath(fullPath);
+   
+    for (directory_iterator next(dirPath), end; next != end; ++next) {
+        auto path = next->path();
+        auto ext = path.extension();
+        if (ext == ".mavlink") {
+            ConvertLogFileToJson(path.generic_string());
+        }
+    }
+}
+
+#endif
 
 void OpenLogFiles() {
 	if (logDirectory.size() > 0)
@@ -490,9 +560,11 @@ void PrintUsage() {
 	printf("    -local:ipaddr                          - specify local NIC address (default 127.0.0.1)\n");
 	printf("    -logdir:filename                       - specify local directory where mavlink logs are stored (default is no log files)\n");
 	printf("    -logformat:json                        - the default is binary, if you specify this option you will get mavlink logs in json format\n");
-	printf("    -noradio							   - disables RC link loss failsafe\n");
+    printf("    -convertExisting                       - convert all existing .mavlink log files in the logdir to json\n");
+    printf("    -noradio							   - disables RC link loss failsafe\n");
 	printf("    -nsh                                   - enter NuttX shell immediately on connecting with PX4\n");
-	printf("    -telemetry                             - generate telemetry mavlink messages for logviewer");
+	printf("    -telemetry                             - generate telemetry mavlink messages for logviewer\n");
+    printf("    -wifi:iface                            - add wifi rssi to the telemetry using given wifi interface name (e.g. wplsp0)\n");
 	printf("If no arguments it will find a COM port matching the name 'PX4'\n");
 	printf("You can specify -proxy multiple times with different port numbers to proxy drone messages out to multiple listeners\n");
 }
@@ -502,6 +574,7 @@ bool ParseCommandLine(int argc, const char* argv[])
 	const char* logDirOption = "logdir";
 	const char* logformatOption = "logformat";
 	const char* outLogFileOption = "outlogfile";
+    const char* wifiOption = "wifi";
 
 	// parse command line
 	for (int i = 1; i < argc; i++)
@@ -590,6 +663,9 @@ bool ParseCommandLine(int argc, const char* argv[])
 					}
 				}
 			}
+            else if (lower == "convertexisting") {
+                convertExisting = true;
+            }
 			else if (lower == "local")
 			{
 				if (parts.size() > 1)
@@ -637,12 +713,14 @@ bool ParseCommandLine(int argc, const char* argv[])
 			else if (lower == "telemetry") {
 				telemetry = true;
 			}
-			else if (lower == "noninteractive") {
-				// Powershell!
-			}
-			else if (lower == "encodedCommand") {
-				// Powershell! Seriously?
-			}
+            else if (lower == wifiOption)
+            {
+                if (parts.size() > 1)
+                {
+                    std::string name(arg + 1 + strlen(wifiOption) + 1);
+                    ifaceName = name;
+                }
+            }
 			else
 			{
 				printf("### Error: unexpected argument: %s\n", arg);
@@ -656,53 +734,6 @@ bool ParseCommandLine(int argc, const char* argv[])
 	return true;
 }
 
-
-std::vector<std::string> parseArgs(std::string s)
-{
-	auto start = s.begin();
-	std::vector<std::string> result;
-	auto theEnd = s.end();
-	auto it = s.begin();
-	while (it != theEnd)
-	{
-		char ch = *it;
-		if (ch == ' ' || ch == '\t' || ch == ',') {
-			if (start < it)
-			{
-				result.push_back(std::string(start, it));
-			}
-			it++;
-			start = it;
-		}
-		else if (*it == '"')
-		{
-			// treat literals as one word
-			it++;
-			start = it;
-			while (*it != '"' && it != theEnd)
-			{
-				it++;
-			}
-			auto end = it;
-			if (start < it)
-			{
-				result.push_back(std::string(start, end));
-			}
-			if (*it == '"') {
-				it++;
-			}
-			start = it;
-		}
-		else {
-			it++;
-		}
-	}
-	if (start < theEnd)
-	{
-		result.push_back(std::string(start, s.end()));
-	}
-	return result;
-}
 
 void HexDump(uint8_t *buffer, uint len)
 {
@@ -795,7 +826,8 @@ void runTelemetry() {
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		if (droneConnection != nullptr) {
 			MavLinkTelemetry tel;
-			droneConnection->getTelemetry(tel);
+            tel.wifiInterfaceName = ifaceName.c_str();
+            droneConnection->getTelemetry(tel);
 			tel.compid = LocalComponentId;
 			tel.sysid = LocalSystemId;
 			if (logConnection != nullptr) {
@@ -881,7 +913,7 @@ bool connect(std::shared_ptr<MavLinkVehicle> mavLinkVehicle)
 	}
 	mavLinkVehicle->connect(droneConnection);
 
-    if (serial) {
+    if (!server) {
         // local connection, then we own sending the heartbeat.
         mavLinkVehicle->startHeartbeat();        
     }
@@ -929,6 +961,24 @@ void checkPulse(std::shared_ptr<MavLinkVehicle> mavLinkVehicle)
 	}
 }
 
+const char* IgnoreStateTable[] = {
+    "Baro #0 fail:  STALE!",
+	nullptr
+};
+
+void handleStatus(const MavLinkStatustext& statustext) {
+    std::string msg = statustext.text;
+    for (size_t i = 0; IgnoreStateTable[i] != nullptr; i++)
+    {
+        if (msg == IgnoreStateTable[i]) {
+            return;
+        }
+    }
+
+	std::string safeText(statustext.text, 50);
+    Utils::logMessage("STATUS: sev=%d, '%s'", static_cast<int>(statustext.severity), safeText.c_str());
+}
+
 int console() {
 
 	std::string line;
@@ -941,7 +991,9 @@ int console() {
 	NshCommand* nshCommand = new NshCommand();
 
 	std::vector<Command*> cmdTable;
-	cmdTable.push_back(new ArmDisarmCommand());
+    Command::setAllCommand(&cmdTable);
+    
+    cmdTable.push_back(new ArmDisarmCommand());
 	cmdTable.push_back(new TakeOffCommand());
 	cmdTable.push_back(new LandCommand());
 	cmdTable.push_back(new MissionCommand());
@@ -954,38 +1006,51 @@ int console() {
 	cmdTable.push_back(new PositionCommand());
 	cmdTable.push_back(new RequestImageCommand());
 	cmdTable.push_back(new FtpCommand());
+    cmdTable.push_back(new PlayLogCommand());
 	cmdTable.push_back(nshCommand);
-	cmdTable.push_back(new AltHoldCommand());
+	// this is advanced command that can get us into trouble on real drone, so remove it for now.
+	//cmdTable.push_back(new AltHoldCommand());
 	cmdTable.push_back(sendImage = new SendImageCommand());
+	cmdTable.push_back(new SetMessageIntervalCommand());
+	cmdTable.push_back(new BatteryCommand());
+	cmdTable.push_back(new WaitForAltitudeCommand());
 
 	if (!connect(mavLinkVehicle)) {
 		return 1;
 	}
 
 	droneConnection->subscribe([=](std::shared_ptr<MavLinkConnection> connection, const MavLinkMessage& message) {
+
+        MavLinkStatustext statustext;
 		if (inLogFile != nullptr && inLogFile->isOpen()) {
+			std::lock_guard<std::mutex> lock(logLock);
 			inLogFile->write(message);
 		}
-		if (message.msgid == MavLinkHeartbeat::kMessageId)
-		{
-			CheckHeartbeat(message);
-		}
-		else if (message.msgid == MavLinkAttitudeTarget::kMessageId)
-		{
-			MavLinkAttitudeTarget target;
-			target.decode(message);
+        switch (message.msgid) {
+        case MavLinkHeartbeat::kMessageId:
+            CheckHeartbeat(message);
+            break;
+        case MavLinkAttitudeTarget::kMessageId:
+            /*
+            MavLinkAttitudeTarget target;
+            target.decode(message);
 
-			float pitch, roll, yaw;
-			mavlink_quaternion_to_euler(target.q, &roll, &pitch, &yaw);
-			/*
-			float q2[4];
-			mavlink_euler_to_quaternion(roll, pitch, yaw, q2);*/
+            float pitch, roll, yaw;
+            mavlink_quaternion_to_euler(target.q, &roll, &pitch, &yaw);
+            float q2[4];
+            mavlink_euler_to_quaternion(roll, pitch, yaw, q2);*/
 
-			//DebugOutput("q1 : %f\t%f\t%f\t%g", target.q[0], target.q[1], target.q[2], target.q[3]);
-			//DebugOutput("q2 : %f\t%f\t%f\t%g", q2[0], q2[1], q2[2], q2[3]);
-			//DebugOutput("target roll: %f\tpitch: %f\tyaw:%f\tthrust: %f", roll, pitch, yaw, target.thrust);
-
-		}
+            //DebugOutput("q1 : %f\t%f\t%f\t%g", target.q[0], target.q[1], target.q[2], target.q[3]);
+            //DebugOutput("q2 : %f\t%f\t%f\t%g", q2[0], q2[1], q2[2], q2[3]);
+            //DebugOutput("target roll: %f\tpitch: %f\tyaw:%f\tthrust: %f", roll, pitch, yaw, target.thrust);
+            break;
+        case MavLinkStatustext::kMessageId: // MAVLINK_MSG_ID_STATUSTEXT:
+            statustext.decode(message);
+            handleStatus(statustext);
+            break;
+        default:
+            break;
+        }
 	});
 
 	if (logConnection != nullptr) {
@@ -1005,8 +1070,8 @@ int console() {
 				cmdTable.push_back(new GotoCommand());
 				cmdTable.push_back(new RotateCommand());
 				cmdTable.push_back(orbit);
+                cmdTable.push_back(new SquareCommand());
 				cmdTable.push_back(new WiggleCommand());
-				cmdTable.push_back(new IdleCommand());
 			}
 			break;
 		}
@@ -1058,13 +1123,14 @@ int console() {
 
 		line = mavlink_utils::Utils::trim(line, ' ');
 
+
 		if (line.length() > 0)
 		{
 			if (line.length() == 0)
 			{
 				continue;
 			}
-			std::vector<std::string> args = parseArgs(line);
+			std::vector<std::string> args = Command::parseArgs(line);
 			std::string cmd = args[0];
 
 			if (cmd == "x")
@@ -1096,20 +1162,20 @@ int console() {
 				}
 			}
 			else {
-				Command* selected = nullptr;
-				for (size_t i = 0; i < cmdTable.size(); i++)
-				{
-					Command* command = cmdTable[i];
-					if (command->Parse(args))
-					{
-						// found it!
-						selected = command;
-						break;
-					}
-				}
+				Command* selected = Command::create(args);
+                //add command text in log
+                if (selected != nullptr && inLogFile != nullptr && inLogFile->isOpen()) {
+                    auto str = std::string(Command::kCommandLogPrefix) + line;
+                    MavLinkStatustext st;
+                    strncpy(st.text, str.c_str(), 50);
+                    MavLinkMessage m;
+                    st.encode(m, 0);
+                    std::lock_guard<std::mutex> lock(logLock);
+                    inLogFile->write(m);
+                }
 
 				if (currentCommand != nullptr && currentCommand != selected) {
-					// close previous command.
+                    // close previous command.
 					currentCommand->Close();
 				}
 				currentCommand = selected;
@@ -1121,7 +1187,11 @@ int console() {
 					}
 					catch (const std::exception& e)
 					{
-						printf("Error: %s\n", e.what());
+						const char* reason = e.what();
+						if (reason == nullptr) {
+							reason = "(unknown)";
+						}
+						printf("Error: %s\n", reason);
 					}
 				}
 				else
@@ -1156,6 +1226,13 @@ int main(int argc, const char* argv[])
 		return 1;
 	}
 
+#if defined(__cpp_lib_experimental_filesystem)
+    if (convertExisting) {
+        ConvertLogFilesToJson(logDirectory);
+        return 0;
+    }
+#endif
+
 	OpenLogFiles();
 
     if (serial) {
@@ -1182,7 +1259,6 @@ int main(int argc, const char* argv[])
 	catch (const std::exception& e)
 	{
 		printf("Exception: %s\n", e.what());
-		return 1;
 	}
 
 	CloseLogFiles();
