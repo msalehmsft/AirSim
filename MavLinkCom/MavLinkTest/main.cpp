@@ -637,16 +637,20 @@ bool ParseCommandLine(int argc, const char* argv[])
 			else if (lower == "telemetry") {
 				telemetry = true;
 			}
+			else if (lower == "noninteractive") {
+				// Powershell!
+			}
+			else if (lower == "encodedCommand") {
+				// Powershell! Seriously?
+			}
 			else
 			{
 				printf("### Error: unexpected argument: %s\n", arg);
-				return false;
 			}
 		}
 		else
 		{
 			printf("### Error: unexpected argument: %s\n", arg);
-			return false;
 		}
 	}
 	return true;

@@ -50,9 +50,11 @@ namespace MavLinkUwp
         bool is_yaw; // is target a heading or a rate (true=heading, false=rate).
         float theading; // target heading
         float targetSpeed;
-        bool paused = false;
+        bool paused = true;
         const float nearDelta = 0.5f; // meters
         const float almostStationery = 0.6f;
+
+		int _subscription;
 
         void HasLocalPosition();
 
@@ -65,6 +67,9 @@ namespace MavLinkUwp
         bool land();
         bool Goto(float x, float y, float z);
 
+		bool proxy(Platform::String^ localIp, Platform::String^ remoteIp, int port);
+
+		void FlyToHeight(float z);
         void MoveAltHold(float targetvx, float targetvy, float targetZ, float heading, bool isYaw);
         void Move(float targetvx, float targetvy, float targetvz, float heading, bool isYaw);
         void Goto(float targetX, float targetY, float targetZ, float speed, float heading, bool isYaw);

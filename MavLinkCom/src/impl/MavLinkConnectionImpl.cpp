@@ -100,7 +100,7 @@ void MavLinkConnectionImpl::startListening(std::shared_ptr<MavLinkConnection> pa
 {
 	name = nodeName;
 	con_ = parent;
-	close();
+	//close();
 	closed = false;
 	port = connectedPort;
 	read_thread = std::thread{ &MavLinkConnectionImpl::readPackets, this };
@@ -270,6 +270,7 @@ void MavLinkConnectionImpl::readPackets()
 	statusBuffer.parse_state = MAVLINK_PARSE_STATE_IDLE;
 	int channel = 0;
 	int hr = 0;
+
 	while (hr == 0 && con_ != nullptr && !closed)
 	{
 		int read = 0;
@@ -287,6 +288,7 @@ void MavLinkConnectionImpl::readPackets()
 			telemetry_.crcErrors++;
 			continue;
 		}
+		
 		for (int i = 0; i < count; i++)
 		{
 			uint8_t frame_state = mavlink_frame_char_buffer(&msgBuffer, &statusBuffer, buffer[i], &msg, &status);

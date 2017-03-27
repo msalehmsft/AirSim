@@ -33,16 +33,8 @@ public:
 
 	int connect(const char* portName, int baudRate)
 	{
-		int dataBits = 8;
-		Parity parity = Parity::Parity_None;
-		StopBits sb = StopBits::StopBits_10;
-		bool dtrEnable = false;
-		bool rtsEnable = false;
-		Handshake hs = Handshake::Handshake_None;
-		int readTimeout = -1;
-		int writeTimeout = -1;
-		int readBufferSize = 8192;
-		int writeBufferSize = 8192;
+		int readBufferSize = 512;
+		int writeBufferSize = 512;
 
 		std::string port = portName;
 		handle = CreateFileA(port.c_str(), GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, 0);
@@ -52,45 +44,30 @@ public:
 			return GetLastError();
 		}
 
-		HRESULT hr = setAttributes(baudRate, parity, dataBits, sb, hs, readTimeout, writeTimeout);
-		if (hr != 0)
-		{
-			return hr;
-		}
-		if (!PurgeComm(handle, PURGE_RXCLEAR | PURGE_TXCLEAR) || !SetupComm(handle, readBufferSize, writeBufferSize))
-		{
+		DCB dcb;
+		if (!GetCommState(handle, &dcb)) {
 			return GetLastError();
 		}
 
-		COMMTIMEOUTS timeouts;
-		// FIXME: The windows api docs are not very clear about read timeouts,
-		// and we have to simulate infinite with a big value (uint.MaxValue - 1)
-		timeouts.ReadIntervalTimeout = MAXDWORD;
-		timeouts.ReadTotalTimeoutMultiplier = MAXDWORD;
-		timeouts.ReadTotalTimeoutConstant = (readTimeout == -1 ? MAXDWORD - 1 : (DWORD)readTimeout);
+		dcb.BaudRate = baudRate;
 
-		timeouts.WriteTotalTimeoutMultiplier = 0;
-		timeouts.WriteTotalTimeoutConstant = (writeTimeout == -1 ? MAXDWORD : (DWORD)writeTimeout);
-		if (!SetCommTimeouts(handle, &timeouts))
-		{
+		if (!SetCommState(handle, &dcb)) {
 			return GetLastError();
 		}
 
-		// set signal
-		DWORD dwFunc = (dtrEnable ? SETDTR : CLRDTR);
-		if (!EscapeCommFunction(handle, dwFunc))
+
+		auto commTimeouts = COMMTIMEOUTS();
 		{
-			return GetLastError();
+			commTimeouts.ReadIntervalTimeout = 10;
+			commTimeouts.ReadTotalTimeoutConstant = 0;
+			commTimeouts.ReadTotalTimeoutMultiplier = 0;
+			commTimeouts.WriteTotalTimeoutConstant = 0;
+			commTimeouts.WriteTotalTimeoutMultiplier = 0;
 		}
 
-		if (hs != Handshake_RequestToSend &&
-			hs != Handshake_RequestToSendXonXoff)
+		if (!SetCommTimeouts(handle, &commTimeouts))
 		{
-			dwFunc = (dtrEnable ? SETRTS : CLRRTS);
-			if (!EscapeCommFunction(handle, dwFunc))
-			{
-				return GetLastError();
-			}
+			return GetLastError();
 		}
 
 		writeOverlapped.Internal = 0;

@@ -18,6 +18,7 @@ using System.Threading.Tasks;
 using Windows.Devices.Enumeration;
 using Windows.Devices.SerialCommunication;
 using Windows.Storage.Streams;
+using Windows.Storage;
 
 // The Blank Page item template is documented at http://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -42,6 +43,7 @@ namespace UwpDrone
         {
             base.OnNavigatedTo(e);
 
+
             await connect();
 
             bool connected = mav.connectToMavLink(writer, reader);
@@ -54,7 +56,7 @@ namespace UwpDrone
             mav.disarm();
         }
 
-        public async Task connect(string identifyingSubStr = "UART0")
+        public async Task connect(string identifyingSubStr = "VID_26AC")
         {
             string selector = SerialDevice.GetDeviceSelector();
             var deviceCollection = await DeviceInformation.FindAllAsync(selector);
@@ -69,7 +71,7 @@ namespace UwpDrone
                     _device = await SerialDevice.FromIdAsync(deviceCollection[i].Id);
                     if (_device != null)
                     {
-                        _device.BaudRate = 115200;
+                        _device.BaudRate = 460800;
                         _device.Parity = SerialParity.None;
                         _device.DataBits = 8;
                         _device.StopBits = SerialStopBitCount.One;
