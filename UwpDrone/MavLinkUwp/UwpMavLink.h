@@ -18,6 +18,10 @@ namespace MavLinkUwp
 			int read(uint8_t* buffer, int bytesToRead);
 			void close();
 			bool isClosed();
+			int getRssi(const char*)
+			{
+				return 0;
+			}
 		};
 
 		std::unique_ptr<UwpMavLinkPort> linkPort;

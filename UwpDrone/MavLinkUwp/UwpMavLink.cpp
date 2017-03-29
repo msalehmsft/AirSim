@@ -251,7 +251,6 @@ bool UwpMavLink::connectToMavLink(DataWriter^ w, DataReader^ r)
 
 	// control works better if we get about 50 of these per second (20ms interval, if we can).
 	_vehicle->setMessageInterval(static_cast<int>(MavLinkMessageIds::MAVLINK_MSG_ID_LOCAL_POSITION_NED), 50);
-	_vehicle->requestControl();
 
 
 
@@ -288,21 +287,9 @@ bool UwpMavLink::disarm()
 
 bool UwpMavLink::takeoff(float z)
 {
-	if (!_vehicle->hasOffboardControl())
-	{
-		_vehicle->requestControl();
-	}
+	_vehicle->takeoff(z);
 
-	if (_vehicle->hasOffboardControl())
-	{
-		_vehicle->takeoff(z);
-
-		const VehicleState& state = _vehicle->getVehicleState();
-		Goto(state.local_est.pos.x, state.local_est.pos.x, z);
-		return true;
-	}
-
-	return false;
+	return true;
 }
 
 bool UwpMavLink::land()
