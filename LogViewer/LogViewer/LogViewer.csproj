@@ -32,7 +32,7 @@
     <SuiteName>PX4 Log Viewer</SuiteName>
     <CreateWebPageOnPublish>true</CreateWebPageOnPublish>
     <WebPage>publish.htm</WebPage>
-    <ApplicationRevision>29</ApplicationRevision>
+    <ApplicationRevision>32</ApplicationRevision>
     <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <PublishWizardCompleted>true</PublishWizardCompleted>
@@ -138,13 +138,14 @@
     <Compile Include="Gestures\Extensions3D.cs" />
     <Compile Include="Gestures\IMouseGesture.cs" />
     <Compile Include="Gestures\RotateGesture3D.cs" />
-    <Compile Include="Model\CategoryItem.cs" />
+    <Compile Include="Model\LogItemSchema.cs" />
     <Compile Include="Model\ChartModels.cs" />
     <Compile Include="Model\CsvDataLog.cs" />
     <Compile Include="Model\IDataLog.cs" />
     <Compile Include="Model\JSonDataLog.cs" />
     <Compile Include="Model\MavlinkLog.cs" />
     <Compile Include="Model\Px4DataLog.cs" />
+    <Compile Include="Model\Px4ULog.cs" />
     <Compile Include="Utilities\ColorExtensions.cs" />
     <Compile Include="Utilities\DelayedAction.cs" />
     <Compile Include="Utilities\Generated.cs" />

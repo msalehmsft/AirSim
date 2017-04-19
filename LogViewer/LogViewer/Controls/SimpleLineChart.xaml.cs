@@ -59,6 +59,7 @@ namespace LogViewer.Controls
         DataValue currentValue;
         bool liveScrolling;
         double liveScrollingXScale = 1;
+        static bool anyContextMenuOpen;
 
         /// <summary>
         /// Set this property to add the chart to a group of charts.  The group will share the same "scale" information across the 
@@ -72,6 +73,23 @@ namespace LogViewer.Controls
             this.InitializeComponent();
             this.Background = new SolidColorBrush(Colors.Transparent); // ensure we get manipulation events no matter where user presses.
             this.SizeChanged += SimpleLineChart_SizeChanged;
+
+            this.ContextMenuOpening += ContextMenu_ContextMenuOpening;
+            this.ContextMenuClosing += ContextMenu_ContextMenuClosing;
+        }
+
+        private void ContextMenu_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            anyContextMenuOpen = true;
+        }
+
+        private void ContextMenu_ContextMenuClosing(object sender, ContextMenuEventArgs e)
+        {
+            // tooltips are too quick to restart and lock tooltip picks up the new location before it can lock the original.
+            _delayedUpdates.StartDelayedAction("SlowRestoreTooltips", () =>
+            {
+                anyContextMenuOpen = false;
+            }, TimeSpan.FromSeconds(1));
         }
 
         void SimpleLineChart_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -200,13 +218,13 @@ namespace LogViewer.Controls
             var info = ComputeScaleSelf(0);
             ApplyScale(info);
 
-            UpdateChart();
+            InvalidateArrange();
         }
 
         internal void ResetZoom()
         {
             zoomTransform = new MatrixTransform();
-            UpdateChart();
+            InvalidateArrange();
         }
         
         public void SetData(DataSeries series)
@@ -438,6 +456,8 @@ namespace LogViewer.Controls
                 MinLabel.Text = "";
                 MaxLabel.Text = "";
                 AddTrendLineMenuItem.IsEnabled = false;
+                AddMeanLineMenuItem.IsEnabled = false;
+                AddSlidingVarianceMenuItem.IsEnabled = false;
                 return;
             }
             if (liveScrolling && series.Values.Count > this.ActualWidth)
@@ -466,6 +486,8 @@ namespace LogViewer.Controls
 
             UpdatePointer(lastMousePosition);
             AddTrendLineMenuItem.IsEnabled = true;
+            AddMeanLineMenuItem.IsEnabled = true;
+            AddSlidingVarianceMenuItem.IsEnabled = true;
         }
 
         private void AddScaledValues(PathFigure figure, int start, int end)
@@ -538,20 +560,28 @@ namespace LogViewer.Controls
 
         internal void HandleMouseMove(MouseEventArgs e)
         {
-            lastMousePosition = e.GetPosition(this);
-            UpdatePointer(lastMousePosition);
+            if (!anyContextMenuOpen)
+            {
+                lastMousePosition = e.GetPosition(this);
+                UpdatePointer(lastMousePosition);
+            }
         }
 
         internal void HandleMouseLeave()
         {
-            if (!ContextMenu.IsVisible)
+            if (!anyContextMenuOpen)
             {
                 HidePointer();
             }
         }
-
+        
         protected override void OnMouseMove(MouseEventArgs e)
         {
+            if (anyContextMenuOpen)
+            {
+                // don't move tooltip while user is interacting with the menu.
+                return;
+            }
             HandleMouseMove(e);
             base.OnMouseMove(e);
         }
@@ -657,7 +687,7 @@ namespace LogViewer.Controls
                 double offset = Canvas.GetLeft(Graph);
                 double x = scaled.X + offset;
                 double y = availableHeight - scaled.Y;
-                ShowTip(series.Name + " = " + (!string.IsNullOrEmpty(found.Label) ? found.Label : found.Y.ToString()), new Point(x, y));
+                ShowTip(series.Name + " = " + (!string.IsNullOrEmpty(found.Label) ? found.Label : found.Y.ToString()), new Point(x, y), found);
             }
             else
             {
@@ -689,12 +719,15 @@ namespace LogViewer.Controls
 
         void HidePointer()
         {
-            PointerBorder.Visibility = System.Windows.Visibility.Hidden;
+            if (PointerBorder.Visibility == Visibility.Visible)
+            {
+                PointerBorder.Visibility = System.Windows.Visibility.Hidden;
+            }
             Pointer.Visibility = System.Windows.Visibility.Hidden;
             LockTooltipMenuItem.IsEnabled = false;
         }
 
-        void ShowTip(string label, Point pos)
+        void ShowTip(string label, Point pos, DataValue data = null)
         {
             PointerLabel.Text = label;
             PointerBorder.UpdateLayout();
@@ -712,6 +745,7 @@ namespace LogViewer.Controls
             }
             PointerBorder.Margin = new Thickness(tipPositionX, tipPositionY, 0, 0);
             PointerBorder.Visibility = System.Windows.Visibility.Visible;
+            PointerBorder.Data = data;
 
             Point pointerPosition = pos;
             Pointer.RenderTransform = new TranslateTransform(pointerPosition.X, pointerPosition.Y);
@@ -720,12 +754,52 @@ namespace LogViewer.Controls
             LockTooltipMenuItem.IsEnabled = true;
         }
 
+        void RepositionTip(PointerBorder pointer)
+        {
+            DataValue data = pointer.Data;
+
+            double availableHeight = this.ActualHeight;
+            double value = data.Y;
+            Point scaled = scaleTransform.Transform(new Point(data.X, data.Y));
+            scaled = zoomTransform.Transform(scaled);
+            double offset = Canvas.GetLeft(Graph);
+            double x = scaled.X + offset;
+            double y = availableHeight - scaled.Y;
+            double tipPositionX = x;
+            if (tipPositionX + PointerBorder.ActualWidth > this.ActualWidth)
+            {
+                tipPositionX = this.ActualWidth - PointerBorder.ActualWidth;
+            }
+            double tipPositionY = y - PointerLabel.ActualHeight - 4;
+            if (tipPositionY < 0)
+            {
+                tipPositionY = 0;
+            }
+            pointer.Margin = new Thickness(tipPositionX, tipPositionY, 0, 0);
+
+            pointer.Pointer.RenderTransform = new TranslateTransform(x, y);
+        }
+
 
         protected override Size ArrangeOverride(Size arrangeBounds)
         {
             this.dirty = true;
             DelayedUpdate();
+            HidePointer();
+            _delayedUpdates.StartDelayedAction("RepositionTips", () => { RepositionTips(); }, TimeSpan.FromMilliseconds(30));
             return base.ArrangeOverride(arrangeBounds);
+        }
+
+        private void RepositionTips()
+        {
+            foreach (UIElement child in AdornerCanvas.Children)
+            {
+                PointerBorder pointer = child as PointerBorder;
+                if (pointer != null)
+                {
+                    RepositionTip(pointer);
+                }
+            }
         }
 
         private void OnLockTooltip(object sender, RoutedEventArgs e)
@@ -742,7 +816,7 @@ namespace LogViewer.Controls
                 Fill = Pointer.Fill, Data = Pointer.Data.Clone(), RenderTransform = Pointer.RenderTransform.Clone() };
             AdornerCanvas.Children.Add(ptr);
 
-            Border ptrBorder = new Border()
+            PointerBorder ptrBorder = new PointerBorder()
             {
                 Padding = PointerBorder.Padding,
                 HorizontalAlignment = PointerBorder.HorizontalAlignment,
@@ -751,7 +825,9 @@ namespace LogViewer.Controls
                 CornerRadius = PointerBorder.CornerRadius,
                 BorderBrush = PointerBorder.BorderBrush,
                 Background = PointerBorder.Background,
-                Margin = PointerBorder.Margin
+                Margin = PointerBorder.Margin,
+                Data = PointerBorder.Data,
+                Pointer = ptr,
             };
             ptrBorder.Child = new TextBlock() { Foreground = PointerLabel.Foreground, Text = PointerLabel.Text };
             AdornerCanvas.Children.Add(ptrBorder);
@@ -812,12 +888,26 @@ namespace LogViewer.Controls
             };
 
             AdornerCanvas.Children.Add(endlabel);
-
         }
 
         private void OnClearAdornments(object sender, RoutedEventArgs e)
         {
             AdornerCanvas.Children.Clear();
+        }
+
+        public void ClearAdornments()
+        {
+            AdornerCanvas.Children.Clear();
+        }
+
+        public event EventHandler ClearAllAdornments;
+
+        private void OnClearAllAdornments(object sender, RoutedEventArgs e)
+        {
+            if (ClearAllAdornments != null)
+            {
+                ClearAllAdornments(this, EventArgs.Empty);
+            }
         }
 
         private void OnScaleIndependently(object sender, RoutedEventArgs e)
@@ -849,6 +939,100 @@ namespace LogViewer.Controls
                 }
             }
         }
+
+        public event EventHandler<List<DataValue>> ChartGenerated;
+
+        private void OnAddSlidingVariance(object sender, RoutedEventArgs e)
+        {
+            if (ChartGenerated != null)
+            {
+                List<DataValue> result = new List<Model.DataValue>();
+                const int WindowSize = 10;
+                int count = 0;
+                DataValue[] window = new DataValue[WindowSize];
+                foreach (DataValue d in this.series.Values)
+                {
+                    window[count] = d;
+                    count++;
+                    if (count == WindowSize)
+                    {
+                        double variance = MathHelpers.Variance(from s in window select s.Y);
+                        double time = window[0].X;
+                        result.Add(new DataValue() { X = time, Y = variance });
+                        count = 0; // restart the window.
+                    }
+                }
+                ChartGenerated(this, result);
+            }
+        }
+
+        private void OnAddMeanLine(object sender, RoutedEventArgs e)
+        {
+            if (this.series.Values.Count == 0)
+            {
+                return;
+            }
+            List<double> points = new List<double>(from d in this.series.Values select d.Y);
+            double mean = MathHelpers.Mean(points);
+
+            DataValue first = this.series.Values.First();
+            DataValue last = this.series.Values.Last();
+
+            // now scale this line to fit the scaled graph
+            Point start = new Point(first.X, mean);
+            Point end = new Point(last.X, mean);
+
+            double height = this.ActualHeight - 1;
+            double availableHeight = height;
+            double offset = Canvas.GetLeft(Graph);
+
+            // scale start point
+            Point point1 = scaleTransform.Transform(start);
+            point1 = zoomTransform.Transform(point1);
+            double y1 = availableHeight - point1.Y;
+
+            // scale end point
+            Point point2 = scaleTransform.Transform(end);
+            point2 = zoomTransform.Transform(point2);
+            double y2 = availableHeight - point2.Y;
+
+            Line line = new Line()
+            {
+                Stroke = Brushes.White,
+                StrokeThickness = 1,
+                X1 = point1.X,
+                Y1 = y1,
+                X2 = point2.X,
+                Y2 = y2,
+                StrokeDashArray = new DoubleCollection(new double[] { 2, 2 })
+            };
+            AdornerCanvas.Children.Add(line);
+
+            TextBlock startLabel = new TextBlock()
+            {
+                Text = String.Format("{0:N3}", start.Y),
+                Foreground = Brushes.White,
+                Margin = new Thickness(point1.X, y1 + 2, 0, 0)
+            };
+            AdornerCanvas.Children.Add(startLabel);
+
+            TextBlock endlabel = new TextBlock()
+            {
+                Text = String.Format("{0:N3}", end.Y),
+                Foreground = Brushes.White
+            };
+            endlabel.SizeChanged += (s, args) =>
+            {
+                endlabel.Margin = new Thickness(point2.X - args.NewSize.Width - 10, y2 + 2, 0, 0);
+            };
+
+            AdornerCanvas.Children.Add(endlabel);
+        }
     }
 
+    class PointerBorder : Border
+    {
+        public DataValue Data { get; set; }
+        public Path Pointer { get; set; }
+    }
 }
