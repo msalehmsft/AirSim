@@ -53,7 +53,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -195,12 +195,12 @@
       <AdditionalUsingDirectories>$(WindowsSDK_WindowsMetadata);$(AdditionalUsingDirectories)</AdditionalUsingDirectories>
       <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>28204</DisableSpecificWarnings>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\MavLinkCom;$(SolutionDir)..\MavLinkCom\common_utils;$(SolutionDir)..\MavLinkCom\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\MavLinkCom;$(ProjectDir)..\..\MavLinkCom\common_utils;$(ProjectDir)..\..\MavLinkCom\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
-      <AdditionalDependencies>$(SolutionDir)..\MavLinkCom\Lib\$(Platform)\$(Configuration)\MavLinkCom.Lib;$(BOOST_ROOT)\stage\lib\libboost_system-vc140-mt-gd-1_63.lib;$(BOOST_ROOT)\stage\lib\libboost_date_time-vc140-mt-gd-1_63.lib;$(BOOST_ROOT)\stage\lib\libboost_regex-vc140-mt-gd-1_63.lib;$(BOOST_ROOT)\stage\lib\libboost_thread-vc140-mt-gd-1_63.lib;$(BOOST_ROOT)\stage\lib\libboost_chrono-vc140-mt-gd-1_63.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(ProjectDir)..\..\MavLinkCom\Lib\$(Platform)\$(Configuration)\MavLinkCom.Lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

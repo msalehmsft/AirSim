@@ -17,14 +17,25 @@ void printUsage() {
 
 int main(int argc, const char* argv[])
 {
+    if (argc != 2) {
+        std::cout << "Usage: " << argv[0] << " is_simulation" << std::endl;
+        std::cout << "\t where is_simulation = 0 or 1" << std::endl;
+        return 1;
+    }
+
+    bool is_simulation = std::atoi(argv[1]) == 1;
+    if (is_simulation)
+        std::cout << "You are running in simulation mode." << std::endl;
+    else
+        std::cout << "WARNING: This is not simulation!" << std::endl;
+
     MavLinkDroneController::ConnectionInfo connection_info;
     connection_info.vehicle_name = "Pixhawk";
     
     // read settings and override defaults
-    Settings& settings = Settings::singleton();
+    Settings& settings = Settings::singleton().loadJSonFile("settings.json");
     Settings child;
-    auto settings_filename = Settings::singleton().getFileName();
-    if (!settings_filename.empty()) {
+    if (settings.isLoadSuccess()) {
         settings.getChild(connection_info.vehicle_name, child);
 
         // allow json overrides on a per-vehicle basis.
@@ -53,10 +64,16 @@ int main(int argc, const char* argv[])
         connection_info.ip_port = child.getInt("UdpPort", connection_info.ip_port);
         connection_info.serial_port = child.getString("SerialPort", connection_info.serial_port);
         connection_info.baud_rate = child.getInt("SerialBaudRate", connection_info.baud_rate);
+
+    }
+    else {
+        std::cout << "Could not load settings from " << Settings::singleton().getFileName() << std::endl;
+        return 3;
+
     }
 
     MavLinkDroneController mav_drone;
-    mav_drone.initialize(connection_info, nullptr, true);   //TODO: need to review how is_simulation flag might affect here
+    mav_drone.initialize(connection_info, nullptr, is_simulation);
     mav_drone.start();
 
     DroneControllerCancelable server_wrapper(&mav_drone);
@@ -66,7 +83,25 @@ int main(int argc, const char* argv[])
     server_wrapper.setImageForCamera(3, DroneControllerBase::ImageType::Depth, v);
     server_wrapper.setImageForCamera(4, DroneControllerBase::ImageType::Scene, std::vector<msr::airlib::uint8_t>{6, 5, 4, 3, 2});
     
+    //start server in async mode
+    server.start(false);
+
     std::cout << "Server connected to MavLink endpoint at " << connection_info.local_host_ip << ":" << connection_info.ip_port << std::endl;
-    server.start(true);
+    std::cout << "Hit Ctrl+C to terminate." << std::endl;
+
+    std::vector<std::string> messages;
+    while (true) {
+        //check messages
+        server_wrapper.getStatusMessages(messages);
+        if (messages.size() > 1) {
+            for (const auto& message : messages) {
+                std::cout << message << std::endl;
+            }
+        }
+
+        constexpr static std::chrono::milliseconds MessageCheckDurationMillis(100);
+        std::this_thread::sleep_for(MessageCheckDurationMillis);
+    }
+
     return 0;
 }

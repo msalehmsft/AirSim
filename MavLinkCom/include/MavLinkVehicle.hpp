@@ -28,15 +28,20 @@ namespace mavlinkcom {
 		// It returns false if the command is rejected.
 		AsyncResult<bool> armDisarm(bool arm);
 		AsyncResult<bool> takeoff(float z = -2.5, float pitch = 0, float yaw = 0);
-		AsyncResult<bool> land(float yaw, float lat = 0, float lon = 0, float altitude = 0);
+		AsyncResult<bool> land(float yaw, float  lat = 0, float lon = 0, float altitude = 0);
 		AsyncResult<bool> returnToHome();
 		AsyncResult<bool> loiter();
-
-		void setStabilizedFlightMode();
-		void setHomePosition(float lat = 0, float lon = 0, float alt = 0);
-		void setAutoMode();
+        AsyncResult<bool> setPositionHoldMode();
+        AsyncResult<bool> setStabilizedFlightMode();
+        AsyncResult<bool> setHomePosition(float lat = 0, float lon = 0, float alt = 0);
+        AsyncResult<bool> setMissionMode();
 		AsyncResult<MavLinkHomePosition> waitForHomePosition();
 		AsyncResult<bool> allowFlightControlOverUsb();
+        AsyncResult<bool>  setMode(int modeFlags, int customMode = 0, int customSubMode = 0);
+
+		// wait for drone to reach specified local z, ensure it is not just blowing past the z location,
+		// wait for it to settle down with dz delta, and dvz delta velocity.
+		AsyncResult<bool> waitForAltitude(float z, float dz, float dvz);
 
 		// request OFFBOARD control.  
 		void requestControl();
@@ -45,14 +50,13 @@ namespace mavlinkcom {
 		// return true if we still have offboard control (can lose this if user flips the switch).
 		bool hasOffboardControl();
 
-		// send this to keep offboard control but do no movement.
-		void offboardIdle();
 		// offboard control methods.
 		bool isLocalControlSupported();
 		void moveToLocalPosition(float x, float y, float z, bool isYaw, float yawOrRate);
 		void moveToGlobalPosition(float lat, float lon, float alt, bool isYaw, float yawOrRate);
 		void moveByLocalVelocity(float vx, float vy, float vz, bool isYaw, float yawOrRate);
 		void moveByLocalVelocityWithAltHold(float vx, float vy, float z, bool isYaw, float yawOrRate);
+        void writeMessage(MavLinkMessageBase& message, bool update_stats = true);
 
 		// low level control, only use this one if you really know what you are doing!!
 		bool isAttitudeControlSupported();

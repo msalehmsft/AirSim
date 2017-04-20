@@ -33,6 +33,8 @@ void MavLinkLog::openForReading(const std::string& filename)
 	if (ptr_ == nullptr) {
 		throw std::runtime_error(Utils::stringf("Could not open the file %s, error=%d", filename.c_str(), errno));
 	}
+
+    fseek(ptr_, 0, SEEK_SET);
 	reading_ = true;
 	writing_ = false;
 }
@@ -56,6 +58,7 @@ void MavLinkLog::close()
 {
 	FILE* temp = ptr_;
 	if (json_ && ptr_ != nullptr) {
+        fprintf(ptr_, "    {}\n"); // so that trailing comma on last row isn't a problem.
 		fprintf(ptr_, "]}\n");
 	}
 	ptr_ = nullptr;
@@ -67,7 +70,7 @@ void MavLinkLog::close()
 }
 
 
-uint64_t ConvertBigEndian(uint64_t v)
+uint64_t FlipEndianness(uint64_t v)
 {
 	uint64_t result = 0;
 	uint64_t shift = v;
@@ -81,7 +84,12 @@ uint64_t ConvertBigEndian(uint64_t v)
 	return result;
 }
 
-void MavLinkLog::write(const mavlinkcom::MavLinkMessage& msg)
+uint64_t MavLinkLog::getTimeStamp()
+{
+    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+}
+
+void MavLinkLog::write(const mavlinkcom::MavLinkMessage& msg, uint64_t timestamp)
 {
 	if (ptr_ != nullptr) {
 		if (reading_) {
@@ -90,15 +98,19 @@ void MavLinkLog::write(const mavlinkcom::MavLinkMessage& msg)
 		if (json_) {
 			MavLinkMessageBase* strongTypedMsg = MavLinkMessageBase::lookup(msg);
 			if (strongTypedMsg != nullptr) {
+                strongTypedMsg->timestamp = timestamp;
 				std::string line = strongTypedMsg->toJSon();
 				fprintf(ptr_, "    %s\n", line.c_str());
+                delete strongTypedMsg;
 			}
 		}
 		else {
-			uint64_t time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            if (timestamp == 0) {
+                timestamp = getTimeStamp();
+            }
 			// for compatibility with QGroundControl we have to save the time field in big endian.
-			time = ConvertBigEndian(time);
-			fwrite(&time, sizeof(uint64_t), 1, ptr_);
+            timestamp = FlipEndianness(timestamp);
+			fwrite(&timestamp, sizeof(uint64_t), 1, ptr_);
 			fwrite(&msg.magic, 1, 1, ptr_);
 			fwrite(&msg.len, 1, 1, ptr_);
 			fwrite(&msg.seq, 1, 1, ptr_);
@@ -111,17 +123,22 @@ void MavLinkLog::write(const mavlinkcom::MavLinkMessage& msg)
 	}
 }
 
-bool MavLinkLog::read(mavlinkcom::MavLinkMessage& msg)
+bool MavLinkLog::read(mavlinkcom::MavLinkMessage& msg, uint64_t& timestamp)
 {
 	if (ptr_ != nullptr) {
 		if (writing_) {
 			throw std::runtime_error("Log file was opened for writing");
 		}
 		uint64_t time;
-		size_t s = fread(&time, sizeof(uint64_t), 1, ptr_);
-		if (s == 0) {
+
+		size_t s = fread(&time, 1, sizeof(uint64_t), ptr_);
+		if (s < sizeof(uint64_t)) {
+            int hr = errno;            
 			return false;
 		}
+
+        timestamp = FlipEndianness(time);
+
 		s = fread(&msg.magic, 1, 1, ptr_);
 		if (s == 0) {
 			return false;
@@ -150,7 +167,7 @@ bool MavLinkLog::read(mavlinkcom::MavLinkMessage& msg)
 		if (s < msg.len) {
 			return false;
 		}
-		s = fread(&msg.checksum, sizeof(uint16_t), 1, ptr_);
+		s = fread(&msg.checksum, 1, sizeof(uint16_t), ptr_);
 		if (s < sizeof(uint16_t)) {
 			return false;
 		}

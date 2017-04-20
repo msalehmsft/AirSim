@@ -13,6 +13,11 @@
 #include "MavLinkTcpServer.hpp"
 #include "MavLinkFtpClient.hpp"
 #include "Semaphore.hpp"
+
+STRICT_MODE_OFF
+#include "json.hpp"
+STRICT_MODE_ON
+
 #include <iostream>
 
 using namespace mavlink_utils;
@@ -33,6 +38,7 @@ void UnitTests::RunAll(std::string comPort, int boardRate)
 	RunTest("SendImageTest", [=] { SendImageTest(); });
 	RunTest("SerialPx4Test", [=] { SerialPx4Test(); });
 	RunTest("FtpTest", [=] { FtpTest(); });
+    RunTest("JSonLogTest", [=] { JSonLogTest(); });
 }
 
 void UnitTests::RunTest(const std::string& name, TestHandler handler)
@@ -222,95 +228,175 @@ void UnitTests::SendImageTest() {
 
 void UnitTests::FtpTest() {
 
-	auto connection = MavLinkConnection::connectSerial("px4", com_port_, baud_rate_);
+    std::shared_ptr<MavLinkConnection> connection = MavLinkConnection::connectSerial("px4", com_port_, baud_rate_);
 
-	MavLinkFtpClient ftp{ 166,1 };
-	ftp.connect(connection);
+    MavLinkFtpClient ftp{ 166,1 };
+    ftp.connect(connection);
 
-	MavLinkFtpProgress progress;
-	std::vector<MavLinkFileInfo> files;
-	ftp.list(progress, "/fs/microsd", files);
-	if (progress.error != 0) {
-		throw std::runtime_error(Utils::stringf("unexpected error %d: '%s' from ftp list '/fs/microsd' command - does your pixhawk have an sd card?",
-			progress.error, progress.message.c_str()));
-	}
-	else 
-	{
-		printf("Found %d files in '/fs/microsd' folder\n", static_cast<int>(files.size()));
-	}
+    try {
 
-	auto tempPath = FileSystem::getTempFolder();
-	tempPath = FileSystem::combine(tempPath, "ftptest.txt");
-	std::ofstream stream(tempPath);
+        MavLinkFtpProgress progress;
+        std::vector<MavLinkFileInfo> files;
+        ftp.list(progress, "/fs/microsd", files);
+        if (progress.error != 0) {
+            throw std::runtime_error(Utils::stringf("unexpected error %d: '%s' from ftp list '/fs/microsd' command - does your pixhawk have an sd card?",
+                progress.error, progress.message.c_str()));
+        }
+        else
+        {
+            printf("Found %d files in '/fs/microsd' folder\n", static_cast<int>(files.size()));
+        }
 
-	const char* TestPattern = "This is line %d\n";
+        auto tempPath = FileSystem::getTempFolder();
+        tempPath = FileSystem::combine(tempPath, "ftptest.txt");
+        std::ofstream stream(tempPath);
 
-	for (int i = 0; i < 100; i++) {
-		std::string line = Utils::stringf(TestPattern, i);
-		stream << line;
-	}
+        const char* TestPattern = "This is line %d\n";
 
-	stream.close();
+        for (int i = 0; i < 100; i++) {
+            std::string line = Utils::stringf(TestPattern, i);
+            stream << line;
+        }
 
-	std::string remotePath = "/fs/microsd/ftptest.txt";
-	std::string localPath = tempPath;
+        stream.close();
+
+        std::string remotePath = "/fs/microsd/ftptest.txt";
+        std::string localPath = tempPath;
 #if defined(_WIN32)
-	// I wish there was a cleaner way to do this, but I can't use tempPath.native() because on windows that is a wstring and on our linux build it is a string.
-	replaceAll(localPath, '/', '\\');
+        // I wish there was a cleaner way to do this, but I can't use tempPath.native() because on windows that is a wstring and on our linux build it is a string.
+        replaceAll(localPath, '/', '\\');
 #endif
 
-	ftp.put(progress, remotePath, localPath);
+        ftp.put(progress, remotePath, localPath);
 
-	if (progress.error != 0) {
-		throw std::runtime_error(Utils::stringf("unexpected error %d: '%s' from ftp put command",
-			progress.error, progress.message.c_str()));
-	}
-	else
-	{
-		printf("put succeeded\n");
-	}
+        if (progress.error != 0) {
+            throw std::runtime_error(Utils::stringf("unexpected error %d: '%s' from ftp put command",
+                progress.error, progress.message.c_str()));
+        }
+        else
+        {
+            printf("put succeeded\n");
+        }
 
-	FileSystem::remove(tempPath);
+        FileSystem::remove(tempPath);
 
-	ftp.get(progress, remotePath, localPath);
+        ftp.get(progress, remotePath, localPath);
 
-	if (progress.error != 0) {
-		throw std::runtime_error(Utils::stringf("unexpected error %d: '%s' from ftp get command",
-			progress.error, progress.message.c_str()));
-	}
+        if (progress.error != 0) {
+            throw std::runtime_error(Utils::stringf("unexpected error %d: '%s' from ftp get command",
+                progress.error, progress.message.c_str()));
+        }
 
-	// verify the file contents.
-	std::ifstream istream(tempPath);
+        // verify the file contents.
+        std::ifstream istream(tempPath);
 
-	int count = 0;
-	std::string line;
-	std::getline(istream, line);
-	while (line.size() > 0) {
-		line += '\n';
-		std::string expected = Utils::stringf(TestPattern, count);
-		if (line != expected)
-		{
-			throw std::runtime_error(Utils::stringf("ftp local file contains unexpected contents '%s' on line %d\n", line.c_str(), count));
-		}
-		count++;
-		std::getline(istream, line);
-	}
+        int count = 0;
+        std::string line;
+        std::getline(istream, line);
+        while (line.size() > 0) {
+            line += '\n';
+            std::string expected = Utils::stringf(TestPattern, count);
+            if (line != expected)
+            {
+                throw std::runtime_error(Utils::stringf("ftp local file contains unexpected contents '%s' on line %d\n", line.c_str(), count));
+            }
+            count++;
+            std::getline(istream, line);
+        }
 
-	printf("get succeeded\n");
+        printf("get succeeded\n");
 
-	istream.close();
-	FileSystem::remove(tempPath);
+        istream.close();
+        FileSystem::remove(tempPath);
 
-	ftp.remove(progress, remotePath);
+        ftp.remove(progress, remotePath);
 
-	if (progress.error != 0) {
-		throw std::runtime_error(Utils::stringf("unexpected error %d: '%s' from ftp remove command",
-			progress.error, progress.message.c_str()));
-	}
-	else
-	{
-		printf("remove succeeded\n");
-	}
+        if (progress.error != 0) {
+            throw std::runtime_error(Utils::stringf("unexpected error %d: '%s' from ftp remove command",
+                progress.error, progress.message.c_str()));
+        }
+        else
+        {
+            printf("remove succeeded\n");
+        }
 
+    }
+    catch (...) {
+        ftp.close();
+        connection->close();
+        connection = nullptr;
+        throw;
+    }
+
+    ftp.close();
+    connection->close();
+    connection = nullptr;
+
+}
+
+void UnitTests::JSonLogTest()
+{
+    auto connection = MavLinkConnection::connectSerial("px4", com_port_, baud_rate_);
+
+    MavLinkLog log;
+
+    auto tempPath = FileSystem::getTempFolder();
+    tempPath = FileSystem::combine(tempPath, "test.mavlink");
+    log.openForWriting(tempPath, true);
+
+    int count = 0;
+    Semaphore  received;
+
+    auto id = connection->subscribe([&](std::shared_ptr<MavLinkConnection> con, const MavLinkMessage& msg) {
+        count++;
+        log.write(msg);
+        if (count > 50) {
+            received.post();
+        }
+    });
+
+    if (!received.timed_wait(30000)) {
+        throw std::runtime_error("PX4 is not sending 50 messages in 30 seconds.");
+    }
+
+    connection->unsubscribe(id);
+    connection->close();
+    log.close();
+
+    // Now verification
+    nlohmann::json doc;
+
+    std::ifstream s;
+    FileSystem::openTextFile(tempPath, s);
+    if (!s.fail()) {
+        s >> doc;        
+    }
+    else {
+        throw std::runtime_error(Utils::stringf("Cannot open json file at '%s'.", tempPath.c_str()));
+    }
+
+    if (doc.count("rows") == 1) {
+        nlohmann::json rows = doc["rows"].get<nlohmann::json>();
+        int found = 0;
+        int imu = 0;
+        if (rows.is_array()) {
+            size_t size = rows.size();
+            for (size_t i = 0; i < size; i++)
+            {
+                auto ptr = rows[i];
+                if (ptr.is_object()) {
+                    if (ptr.count("name") == 1) {
+                        auto name = ptr["name"].get<std::string>();
+                        if (name == "HIGHRES_IMU") {
+                            imu++;
+                        }
+                        found++;
+                    }
+                }
+            }
+        }
+
+        printf("found %d valid rows in the json file, and %d HIGHRES_IMU records\n", found, imu);
+    }
 
 }

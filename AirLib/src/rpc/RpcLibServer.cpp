@@ -44,7 +44,6 @@ RpcLibServer::RpcLibServer(DroneControllerCancelable* drone, string server_addre
     pimpl_->server.bind("armDisarm", [&](bool arm) -> bool { return drone_->armDisarm(arm); });
     pimpl_->server.bind("setOffboardMode", [&](bool is_set) -> void { drone_->setOffboardMode(is_set); });
     pimpl_->server.bind("setSimulationMode", [&](bool is_set) -> void { drone_->setSimulationMode(is_set); });
-    pimpl_->server.bind("setUserInputs", [&](const vector<float>& inputs) -> void { drone_->setUserInputs(inputs); });
     pimpl_->server.bind("takeoff", [&](float max_wait_seconds) -> bool { return drone_->takeoff(max_wait_seconds); });
     pimpl_->server.bind("land", [&]() -> bool { return drone_->land(); });
     pimpl_->server.bind("goHome", [&]() -> bool { return drone_->goHome(); });
@@ -114,7 +113,7 @@ void RpcLibServer::start(bool block)
     if (block)
         pimpl_->server.run();
     else
-        pimpl_->server.async_run(2);   //2 threads
+        pimpl_->server.async_run(4);   //4 threads
 }
 
 void RpcLibServer::stop()

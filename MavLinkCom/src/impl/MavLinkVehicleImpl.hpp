@@ -27,28 +27,30 @@ namespace mavlinkcom_impl {
 		MavLinkVehicleImpl(int local_system_id, int local_component_id);
 		~MavLinkVehicleImpl();
 	public:
-		// Send command to arm or disarm the drone.  Drone will not fly until it is armed successfully.
-		// It returns false if the command is rejected.
 		AsyncResult<bool> armDisarm(bool arm);
 		AsyncResult<bool> takeoff(float z = -2.5, float pitch = 0, float yaw = 0);
 		AsyncResult<bool> land(float yaw, float lat = 0, float lon = 0, float altitude = 0);
 		AsyncResult<bool> returnToHome();
 		AsyncResult<bool> loiter();
-
-		void setStabilizedFlightMode();
-		void setHomePosition(float lat = 0, float lon = 0, float alt = 0);
-		void setAutoMode();
+        AsyncResult<bool> setPositionHoldMode();
+        AsyncResult<bool> setStabilizedFlightMode();
+        AsyncResult<bool> setHomePosition(float lat = 0, float lon = 0, float alt = 0);
+        AsyncResult<bool> setMissionMode();
 		AsyncResult<MavLinkHomePosition> waitForHomePosition();
 		AsyncResult<bool> allowFlightControlOverUsb();
-		
+		AsyncResult<bool> waitForAltitude(float z, float dz, float dvz);
+        AsyncResult<bool>  setMode(int modeFlags, int customMode = 0, int customSubMode = 0);
+
 		// request OFFBOARD control.  
-		void requestControl();
+        void requestControl();
 		// release OFFBOARD control
-		void releaseControl();
+        void releaseControl();
+
 		// return true if we still have offboard control (can lose this if user flips the switch).
 		bool hasOffboardControl();
-		// send this to keep offboard control but do no movement.
-		void offboardIdle();
+        // send this to keep offboard control but do no movement.
+        void offboardIdle();
+
 		// offboard control methods.
 		bool isLocalControlSupported();
 		void moveToLocalPosition(float x, float y, float z, bool isYaw, float yawOrRate);
@@ -62,24 +64,24 @@ namespace mavlinkcom_impl {
 		// Move drone by directly controlling the attitude of the drone (units are degrees).
 		// If the rollRate, pitchRate and yawRate are all zero then you will get the default rates provided by the drone.
 		void moveByAttitude(float roll, float pitch, float yaw, float rollRate, float pitchRate, float yawRate, float thrust);
+        void writeMessage(MavLinkMessageBase& message, bool update_stats = true);
 
 		int getVehicleStateVersion();
 		const VehicleState& getVehicleState();
 
 		uint32_t getTimeStamp();
 	private:
-		void writeMessage(MavLinkMessageBase& message, bool update_stats = true);
 		virtual void handleMessage(std::shared_ptr<MavLinkConnection> connection, const MavLinkMessage& message);
 		void resetCommandParams(MavLinkCommandLong& cmd);
 		void updateReadStats(const MavLinkMessage& msg);
 		void checkOffboard();
 		bool getRcSwitch(int channel, float threshold);
-		void requestControlNoCheck();
 
 	private:
 		std::mutex state_mutex_;
 		int state_version_ = 0;
-		bool offboard_control_mode_ = false;
+        bool control_requested_ = false;
+        int requested_mode_ = 0;
 		// this latch is reset even time we receive a heartbeat, this is useful for operations that we
 		// want to throttle to the heartbeat rate.
 		bool heartbeat_throttle_ = false;

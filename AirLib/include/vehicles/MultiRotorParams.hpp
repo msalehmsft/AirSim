@@ -9,6 +9,13 @@
 #include "sensors/SensorCollection.hpp"
 #include "controllers/DroneControllerBase.hpp"
 
+//sensors
+#include "sensors/barometer/BarometerSimple.hpp"
+#include "sensors/imu/ImuSimple.hpp"
+#include "sensors/gps/GpsSimple.hpp"
+#include "sensors/magnetometer/MagnetometerSimple.hpp"
+
+
 namespace msr { namespace airlib {
 
 class MultiRotorParams {
@@ -52,7 +59,7 @@ public: //types
         // for nice streamlined frame design and allow higher top speed which is more fun.
         //angular coefficient is usually 10X smaller than linear, however we should replace this with exact number
         //http://physics.stackexchange.com/q/304742/14061
-        real_T angular_drag_coefficient = 0.13f; 
+        real_T angular_drag_coefficient = linear_drag_coefficient; 
         real_T restitution = 0.15f;
         real_T friction = 0.7f;
         EnabledSensors enabled_sensors;
@@ -127,7 +134,6 @@ protected: //static utility functions for derived classes to use
 			throw std::invalid_argument("Rotor count other than 4 is not supported by this method!");
 	}
 
-
 	/// Initialize the rotor_poses given the rotor_count, the arm lengths and the arm angles (relative to forwards vector).
 	/// Also provide the direction you want to spin each rotor and the z-offsetof the rotors relative to the center of gravity.
     static void initializeRotors(vector<RotorPose>& rotor_poses, uint rotor_count, real_T arm_lengths[], real_T arm_angles[], RotorTurningDirection rotor_directions[], real_T rotor_z /* z relative to center of gravity */)
@@ -158,6 +164,26 @@ protected: //static utility functions for derived classes to use
             inertia(1, 1) += (pos.x()*pos.x() + pos.z()*pos.z()) * motor_assembly_weight;
             inertia(2, 2) += (pos.x()*pos.x() + pos.y()*pos.y()) * motor_assembly_weight;
         }
+    }
+
+    static void createStandardSensors(vector<unique_ptr<SensorBase>>& sensor_storage, SensorCollection& sensors, const EnabledSensors& enabled_sensors)
+    {
+        sensor_storage.clear();
+        if (enabled_sensors.imu)
+            sensors.insert(createSensor<ImuSimple>(sensor_storage), SensorCollection::SensorType::Imu);
+        if (enabled_sensors.magnetometer)
+            sensors.insert(createSensor<MagnetometerSimple>(sensor_storage), SensorCollection::SensorType::Magnetometer);
+        if (enabled_sensors.gps)
+            sensors.insert(createSensor<GpsSimple>(sensor_storage), SensorCollection::SensorType::Gps);
+        if (enabled_sensors.barometer)
+            sensors.insert(createSensor<BarometerSimple>(sensor_storage), SensorCollection::SensorType::Barometer);
+    }
+
+    template<typename SensorClass>
+    static SensorBase* createSensor(vector<unique_ptr<SensorBase>>& sensor_storage)
+    {
+        sensor_storage.emplace_back(unique_ptr<SensorClass>(new SensorClass()));
+        return sensor_storage.back().get();
     }
 
 private:

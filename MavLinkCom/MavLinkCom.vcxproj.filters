@@ -73,6 +73,9 @@
     <ClCompile Include="src\Semaphore.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="src\serial_com\wifi.cpp">
+      <Filter>serial_com</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="mavlink\checksum.h">
@@ -130,9 +133,6 @@
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="include\MavLinkFtpClient.hpp">
-      <Filter>include</Filter>
-    </ClInclude>
-    <ClInclude Include="src\impl\MavLinkFtpClientImpl.hpp">
       <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="include\MavLinkLog.hpp">
@@ -203,6 +203,15 @@
     </ClInclude>
     <ClInclude Include="include\Semaphore.hpp">
       <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="src\serial_com\wifi.h">
+      <Filter>serial_com</Filter>
+    </ClInclude>
+    <ClInclude Include="common_utils\json.hpp">
+      <Filter>common_utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\impl\MavLinkFtpClientImpl.hpp">
+      <Filter>src\impl</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

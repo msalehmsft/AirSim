@@ -70,7 +70,6 @@ public: //types
     typedef common_utils::EnumFlags<ImageType>  ImageTypeFlags;
 
 public: //interface for outside world
-
     /// The drone must be armed before it will fly.  Set arm to true to arm the drone.  
 	/// On some drones arming may cause the motors to spin on low throttle, this is normal.
 	/// Set arm to false to disarm the drone.  This will disable the motors, so don't do that
@@ -169,6 +168,11 @@ public: //interface for outside world
     /// get the current local position in NED coordinate (x=North/y=East,z=Down) so z is negative.
     virtual Vector3r getPosition() = 0;
 
+    /// Get debug pose, meaning of which is dependent on application usage. For example,
+    /// this could be pose of real vehicle from log playback. The return value should indicate
+    /// timestamp with 0 indicating not available
+    virtual Pose getDebugPose();
+
 	/// get the current X and Y position
     Vector2r getPositionXY();
 
@@ -181,10 +185,14 @@ public: //interface for outside world
 	/// Get the current orientation (or attitude) of the drone as a Quaternion.
     virtual Quaternionr getOrientation() = 0;
 
-	/// Get the current RC inputs that are being applied by the user.
+	/// Get the current RC inputs when RC transmitter is talking to to flight controller
     virtual RCData getRCData() = 0;
 
-	/// Get a timestamp
+    /// Set the RC data that should be used by flight controller
+    virtual void setRCData(const RCData& rcData) = 0;
+
+	/// Get a timestamp - mainly used to figure out if any data read from API is stale
+    /// currently only supported by RCData class
     virtual double timestampNow() = 0;
 
 	/// Get the home point (where drone was armed before takeoff).  This is the location the drone 
@@ -215,6 +223,12 @@ public: //interface for outside world
 	/// bugbug: what is this doing here?  This should be a private implementation detail of the particular drone implementation.
 	virtual void setImageForCamera(int camera_id, ImageType type, const vector<uint8_t>& image);
 
+    //*********************************common pre & post for move commands***************************************************
+    //TODO: make these protected
+    virtual bool loopCommandPre();
+    virtual void loopCommandPost();
+    //*********************************common pre & post for move commands***************************************************
+
     DroneControllerBase() = default;
     virtual ~DroneControllerBase() = default;
 
@@ -226,8 +240,6 @@ protected: //must implement interface by derived class
     virtual void commandVelocity(float vx, float vy, float vz, const YawMode& yaw_mode) = 0;
     virtual void commandVelocityZ(float vx, float vy, float z, const YawMode& yaw_mode) = 0;
     virtual void commandPosition(float x, float y, float z, const YawMode& yaw_mode) = 0;
-    virtual void commandVirtualRC(const RCData& rc_data) = 0;
-    virtual void commandEnableVirtualRC(bool enable) = 0;
 
     //config commands
     virtual float getCommandPeriod() = 0; //time between two command required for drone in seconds
@@ -272,6 +284,7 @@ protected: //utility functions and data members for derived classes
     //useful for derived class to check after takeoff
     virtual bool waitForZ(float max_wait_seconds, float z, float margin, CancelableBase& cancelable_action);
 
+
     //*********************************safe wrapper around low level commands***************************************************
     virtual bool moveByVelocity(float vx, float vy, float vz, const YawMode& yaw_mode);
     virtual bool moveByVelocityZ(float vx, float vy, float z, const YawMode& yaw_mode);
@@ -312,23 +325,6 @@ private:    //types
             seg_path_length = path_length;
 
             seg_velocity = velocity;
-        }
-    };
-
-    //instances of this class is always local variable in DroneControllerBase methods
-    class VirtualRCEnable {
-    private:
-        DroneControllerBase* drone_base_ptr_;
-    public:
-        VirtualRCEnable(DroneControllerBase* drone_base_ptr)
-        {
-            drone_base_ptr_ = drone_base_ptr;
-            drone_base_ptr_->commandEnableVirtualRC(true);
-        }
-        ~VirtualRCEnable()
-        {
-            drone_base_ptr_->commandEnableVirtualRC(false);
-            //no need to worry about drone_base_ptr_
         }
     };
 
