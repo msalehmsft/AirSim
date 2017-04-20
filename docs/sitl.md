@@ -11,14 +11,13 @@ But it's still useful when you don't have a flight controller handy. It is just 
 1. Install [BashOnWindows](https://msdn.microsoft.com/en-us/commandline/wsl/install_guide).  You can also do this on an Ubuntu machine, 
 but in that case you will have to use real ip addresses instead of localhost (See Using VirtualBox Ubuntu below).
 2. Type `bash` at Windows command prompt. Follow [these steps for Linux](http://dev.px4.io/starting-installing-linux.html) 
-and follow all the instructions under `NuttX based hardware` to install prerequisites.  Technically you don't need the full NuttX 
-toolchain for cross-compiling ARM Cortex M4 code, but it won't hurt to get all that.  The PX4 make system probably checks that you have it all, 
-even though you probably don't need that to build the posix-SITL version which will be running on your intel chipset.
+and follow all the instructions under `NuttX based hardware` to install prerequisites.  We have also included a summary of
+those PX4 instructions in [this page](px4.md).
+
 3. Get the PX4 source code and build the posix SITL version of PX4:
 ```
 git clone https://github.com/PX4/Firmware.git
 cd Firmware
-git submodule update --init --recursive
 make posix_sitl_default
 ```
 4. Use following command to start PX4 firmware in SITL mode:
@@ -28,6 +27,7 @@ make posix_sitl_default
 5. You should see a message like this you `INFO  [simulator] Waiting for initial data on UDP port 14560` which means the SITL PX4 app is
 waiting for someone to connect.
 6. Now edit [settings file](settings.md) with `UdpIp` address 127.0.0.1 and `UdpPort` 14560, set `UseSerial` to false
+and set `SitlIp` to 127.0.0.1 and `SitlPort` to 14556.
 7. Run Unreal environment and it should connect to SITL via UDP.  You should see a bunch of messages from the SITL PX4 window from
 things like `local_position_estimator` and `commander` and so on.
 8. You should also be able to use QGroundControl just like with actual [flight controller harware](prereq.md). 
