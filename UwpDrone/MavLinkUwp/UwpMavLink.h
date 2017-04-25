@@ -28,42 +28,45 @@ namespace MavLinkUwp
         std::shared_ptr<mavlinkcom::MavLinkConnection> _com;
         std::shared_ptr<mavlinkcom::MavLinkVehicle> _vehicle;
 
-        bool hasLocalPosition;
-        bool requestedControl;
-        bool hasControl;
-        bool targetReached;
-        bool targetPosition;
-        bool targetVelocity;
-        bool targetVelocityAltHold;
-        bool settled; // after target reached.
+        bool hasLocalPosition = false;
+        bool requestedControl = false;
+        bool hasControl = false;
+        bool targetReached = false;
+        bool targetPosition = false;
+        bool targetVelocity = false;
+        bool targetVelocityAltHold = false;
+        bool settled = false; // after target reached.
 
-        float x, y, z; // current
-        float tx, ty, tz; // target position
-        float vx, vy, vz; // current speed
+        float x = 0.0f, y = 0.0f, z = 0.0f; // current
+        float tx = 0.0f, ty = 0.0f, tz = 0.0f; // target position
+        float vx = 0.0f, vy = 0.0f, vz = 0.0f; // current speed
 
                           // current attitude
-        float pitch;
-        float pitchSpeed;
-        float roll;
-        float rollSpeed;
-        float yaw;
-        float yawSpeed;
+        float pitch = 0.0f;
+        float pitchSpeed = 0.0f;
+        float roll = 0.0f;
+        float rollSpeed = 0.0f;
+        float yaw = 0.0f;
+        float yawSpeed = 0.0f;
 
         // targets for planned movement.
-        float tvx, tvy, tvz; // target velocities
-        bool is_yaw; // is target a heading or a rate (true=heading, false=rate).
-        float theading; // target heading
-        float targetSpeed;
+        float tvx = 0.0f, tvy = 0.0f, tvz = 0.0f; // target velocities
+        bool is_yaw = false; // is target a heading or a rate (true=heading, false=rate).
+        float theading = 0.0f; // target heading
+        float targetSpeed = 0.0f;
         bool paused = true;
         const float nearDelta = 0.5f; // meters
         const float almostStationery = 0.6f;
 
-		int _subscription;
+		int _subscription = 0;
 
         void HasLocalPosition();
 
     public:
         UwpMavLink();
+
+		double getAltitude();
+
         bool connectToMavLink(Windows::Storage::Streams::DataWriter^ w, Windows::Storage::Streams::DataReader^ r);
         bool arm();
         bool disarm();
@@ -78,5 +81,6 @@ namespace MavLinkUwp
         void Move(float targetvx, float targetvy, float targetvz, float heading, bool isYaw);
         void Goto(float targetX, float targetY, float targetZ, float speed, float heading, bool isYaw);
 
+		void setGPS(double xCM, double yCM, double zCM);
     };
 }
