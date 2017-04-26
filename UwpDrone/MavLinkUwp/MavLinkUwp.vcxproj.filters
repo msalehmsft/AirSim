@@ -9,9 +9,11 @@
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="UwpMavLink.cpp" />
+    <ClCompile Include="geo.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
     <ClInclude Include="UwpMavLink.h" />
+    <ClInclude Include="geo.h" />
   </ItemGroup>
 </Project>

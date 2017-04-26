@@ -5,6 +5,7 @@
 #include "UwpMavLink.h"
 #include "ppltasks.h"
 #include "Semaphore.hpp"
+#include "geo.h"
 
 
 #define _USE_MATH_DEFINES
@@ -30,6 +31,14 @@ static const std::wstring intelMavLink(L"UART0");
 
 const int LocalSystemId = 166;
 const int LocalComponentId = 1;
+
+
+UwpMavLink::UwpMavLink()
+{
+	// nobody will ever use more than 64 bits...
+	globallocalconverter_init(0, 0, 0, GetTickCount64());
+}
+
 
 
 void UwpMavLink::UwpMavLinkPort::connect(DataWriter^ w, DataReader^ r)
@@ -145,10 +154,6 @@ void UwpMavLink::UwpMavLinkPort::close()
 bool UwpMavLink::UwpMavLinkPort::isClosed()
 {
 	return false;
-}
-
-UwpMavLink::UwpMavLink()
-{
 }
 
 bool UwpMavLink::connectToMavLink(DataWriter^ w, DataReader^ r)
@@ -306,6 +311,14 @@ void UwpMavLink::FlyToHeight(float z)
 	MoveAltHold(state.local_est.pos.x, state.local_est.pos.x, z, state.global_est.heading, false);
 }
 
+double UwpMavLink::getAltitude()
+{
+	const VehicleState& state = _vehicle->getVehicleState();
+
+	return state.altitude.altitude_local;
+}
+
+
 bool UwpMavLink::Goto(float x, float y, float z)
 {
     requestedControl = false;
@@ -377,3 +390,26 @@ void UwpMavLink::MoveAltHold(float targetvx, float targetvy, float targetZ, floa
     theading = heading;
 }
 
+
+void UwpMavLink::setGPS(double xCM, double yCM, double zCM)
+{
+	double lat, lon;
+	double alt;
+	MavLinkHilGps hilGPS;
+
+	// coordinates in converted from meters to lat/lon/alt
+	globallocalconverter_toglobal(x * 100.0, y * 100.0, z * 100.0, &lat, &lon, &alt);
+
+	hilGPS.alt = (int32_t) std::round(alt * 1000.0f);	// in meters...
+	hilGPS.lat = (int32_t)(lat * 1e7);
+	hilGPS.lon = (int32_t)(lat * 1e7);
+	hilGPS.eph = 65535;	// unknown
+	hilGPS.epv = 65535; // unknown
+	hilGPS.vel = 65535; // unknown
+	hilGPS.cog = 65535; // unknown
+	hilGPS.fix_type = 3;	// because Chris says so
+	hilGPS.satellites_visible = 10;	// because Chris says so
+	hilGPS.timestamp = GetTickCount64();
+
+	_com->sendMessage(hilGPS);
+}
