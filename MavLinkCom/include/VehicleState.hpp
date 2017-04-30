@@ -91,6 +91,10 @@ namespace mavlinkcom {
 			int last_write_msg_id = 0;
 			uint64_t last_write_msg_time = 0;
 			std::string debug_msg;
+			uint16_t load = 0;
+			uint16_t voltage_battery = 0;
+			int16_t current_battery = 0;
+			int8_t battery_remaining = 0;
 		} stats;
 
 		int mode = 0; // MAV_MODE_FLAG

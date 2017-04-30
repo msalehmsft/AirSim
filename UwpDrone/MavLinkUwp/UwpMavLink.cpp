@@ -29,8 +29,24 @@ static const int pixhawkFMUV1ProductId = 16;     ///< Product ID for PX4 FMU V1 
 
 static const std::wstring intelMavLink(L"UART0");
 
-const int LocalSystemId = 166;
-const int LocalComponentId = 1;
+const int kLocalSystemId = 166;
+const int kLocalComponentId = 1;
+
+const double kMyLat = 47.644230;
+const double kMyLon = -122.139070;
+
+static unsigned long getTimeSinceEpochMillis(std::time_t* t = nullptr)
+{
+	std::time_t st = std::time(t);
+	auto millies = static_cast<std::chrono::milliseconds>(st).count();
+	return static_cast<unsigned long>(millies);
+}
+//high precision time in seconds since epoch
+static double getTimeSinceEpoch(std::chrono::high_resolution_clock::time_point* t = nullptr)
+{
+	using Clock = std::chrono::high_resolution_clock;
+	return std::chrono::duration<double>((t != nullptr ? *t : Clock::now()).time_since_epoch()).count();
+}
 
 
 UwpMavLink::UwpMavLink()
@@ -158,15 +174,14 @@ bool UwpMavLink::UwpMavLinkPort::isClosed()
 
 bool UwpMavLink::connectToMavLink(DataWriter^ w, DataReader^ r)
 {
-    _vehicle = std::make_shared<MavLinkVehicle>(LocalSystemId, LocalComponentId);
+	_vehicle = std::make_shared<MavLinkVehicle>(kLocalSystemId, kLocalComponentId);
 
 	std::shared_ptr<UwpMavLink::UwpMavLinkPort> mp = std::make_shared<UwpMavLink::UwpMavLinkPort>();
 	mp->connect(w ,r);
 
 	_com = MavLinkConnection::connectPort("drone", mp);
 
-    _vehicle->connect(_com);
-
+	_vehicle->connect(_com);
     _vehicle->startHeartbeat();
 
 	_subscription = _vehicle->getConnection()->subscribe([=](std::shared_ptr<MavLinkConnection> con, const MavLinkMessage& msg) {
@@ -257,10 +272,6 @@ bool UwpMavLink::connectToMavLink(DataWriter^ w, DataReader^ r)
 	// control works better if we get about 50 of these per second (20ms interval, if we can).
 	_vehicle->setMessageInterval(static_cast<int>(MavLinkMessageIds::MAVLINK_MSG_ID_LOCAL_POSITION_NED), 50);
 
-
-
-
-
     return _com != nullptr;
 }
 
@@ -280,13 +291,13 @@ bool UwpMavLink::proxy(Platform::String^ localIp, Platform::String^ remoteIp, in
 
 bool UwpMavLink::arm()
 {
-    _vehicle->armDisarm(true);
+	_vehicle->armDisarm(true);
     return true;
 }
 
 bool UwpMavLink::disarm()
 {
-    _vehicle->armDisarm(false);
+	_vehicle->armDisarm(false);
     return true;
 }
 
@@ -311,12 +322,28 @@ void UwpMavLink::FlyToHeight(float z)
 	MoveAltHold(state.local_est.pos.x, state.local_est.pos.x, z, state.global_est.heading, false);
 }
 
-double UwpMavLink::getAltitude()
+double UwpMavLink::getAltitudeRelative()
 {
 	const VehicleState& state = _vehicle->getVehicleState();
 
 	return state.altitude.altitude_local;
 }
+
+double UwpMavLink::getAltitudeGlobal()
+{
+	const VehicleState& state = _vehicle->getVehicleState();
+
+	return state.altitude.altitude_local;
+}
+
+double UwpMavLink::getBatteryVoltage()
+{
+	const VehicleState& state = _vehicle->getVehicleState();
+
+	double voltsInMillivolts = (double)state.stats.voltage_battery;
+	return voltsInMillivolts / 1000.0;	// return volts
+}
+
 
 
 bool UwpMavLink::Goto(float x, float y, float z)
@@ -398,18 +425,25 @@ void UwpMavLink::setGPS(double xCM, double yCM, double zCM)
 	MavLinkHilGps hilGPS;
 
 	// coordinates in converted from meters to lat/lon/alt
-	globallocalconverter_toglobal(x * 100.0, y * 100.0, z * 100.0, &lat, &lon, &alt);
+	globallocalconverter_toglobal(xCM / 100.0, yCM / 100.0, zCM / 100.0, &lat, &lon, &alt);
 
-	hilGPS.alt = (int32_t) std::round(alt * 1000.0f);	// in meters...
+	lat += kMyLat;
+	lon += kMyLon;
+
+	hilGPS.compid = _com->getTargetComponentId();
+	hilGPS.sysid = _com->getTargetSystemId();
+	hilGPS.alt = (int32_t) std::round(alt  * 1000.0f);	// alt is now in meters
 	hilGPS.lat = (int32_t)(lat * 1e7);
-	hilGPS.lon = (int32_t)(lat * 1e7);
-	hilGPS.eph = 65535;	// unknown
-	hilGPS.epv = 65535; // unknown
-	hilGPS.vel = 65535; // unknown
-	hilGPS.cog = 65535; // unknown
+	hilGPS.lon = (int32_t)(lon * 1e7);
+	hilGPS.eph = static_cast<uint16_t>(0.3 * 100);
+	hilGPS.epv = static_cast<uint16_t>(0.4 * 100);
+	hilGPS.vel = 0; // unknown
+	hilGPS.cog = 0; // unknown
 	hilGPS.fix_type = 3;	// because Chris says so
 	hilGPS.satellites_visible = 10;	// because Chris says so
-	hilGPS.timestamp = GetTickCount64();
+	hilGPS.timestamp = static_cast<uint64_t>(getTimeSinceEpochMillis());
+	hilGPS.time_usec = static_cast<uint64_t>(getTimeSinceEpochMillis() * 1000);
 
-	_com->sendMessage(hilGPS);
+	//_com->sendMessage(hilGPS);
 }
+

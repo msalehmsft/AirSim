@@ -299,7 +299,13 @@ void MavLinkVehicleImpl::handleMessage(std::shared_ptr<MavLinkConnection> connec
 		break;
 	}
     case MavLinkSysStatus::kMessageId: {
-		//printSystemStatus(&msg);
+		MavLinkSysStatus stat;
+		stat.decode(msg);
+		std::lock_guard<std::mutex> guard(state_mutex_);
+		vehicle_state_.stats.current_battery = stat.current_battery;
+		vehicle_state_.stats.voltage_battery = stat.voltage_battery;
+		vehicle_state_.stats.load = stat.load;
+		vehicle_state_.stats.battery_remaining = stat.battery_remaining;
 		break;
 	}
     case MavLinkHomePosition::kMessageId: { // MAVLINK_MSG_ID_HOME_POSITION:

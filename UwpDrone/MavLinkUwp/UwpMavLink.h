@@ -65,7 +65,9 @@ namespace MavLinkUwp
     public:
         UwpMavLink();
 
-		double getAltitude();
+		double getAltitudeRelative();
+		double getAltitudeGlobal();
+		double getBatteryVoltage();
 
         bool connectToMavLink(Windows::Storage::Streams::DataWriter^ w, Windows::Storage::Streams::DataReader^ r);
         bool arm();

@@ -294,7 +294,6 @@ public:
         char* ptr = std::getenv(var.c_str());
         return ptr ? ptr : "";
     }
-
 };
 
 } //namespace
