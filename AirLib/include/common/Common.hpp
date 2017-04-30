@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <iostream>
+#include <cstdint>
 #include "common/common_utils/Utils.hpp"
 #include "common_utils/RandomGenerator.hpp"
 #include "VectorMath.hpp"
@@ -22,8 +23,9 @@ namespace msr { namespace airlib {
 
 //numericals
 typedef float real_T;
-typedef unsigned int int32_T;
-typedef bool boolean_T;
+//this is not required for most compilers
+typedef unsigned int uint;
+typedef unsigned long ulong;
 
 //well known types
 typedef msr::airlib::VectorMathf VectorMath;
@@ -41,13 +43,9 @@ typedef std::string string;
 typedef common_utils::Utils Utils;
 typedef VectorMath::RandomVectorGaussianT RandomVectorGaussianR;
 typedef VectorMath::RandomVectorT RandomVectorR;
+typedef unsigned long TTimePoint;
+typedef double TTimeDelta;
 
-
-//this is not required for most compilers
-typedef unsigned int uint;
-typedef unsigned long ulong;
-typedef unsigned int uint32_t;
-typedef unsigned char uint8_t;
 
 template <typename T>
 using vector = std::vector<T>;
@@ -77,11 +75,15 @@ static void logWarning(const char* format, ...)
     va_list args;
     va_start(args, format);
 
+    IGNORE_FORMAT_STRING_ON
     auto size = _vscprintf(format, args) + 1U;
+    IGNORE_FORMAT_STRING_OFF
     std::unique_ptr<char[]> buf(new char[size] ); 
 
 #ifndef _MSC_VER
+    IGNORE_FORMAT_STRING_ON
     vsnprintf(buf.get(), size, format, args);
+    IGNORE_FORMAT_STRING_OFF
 #else
     vsnprintf_s(buf.get(), size, _TRUNCATE, format, args);
 #endif
@@ -94,12 +96,15 @@ static void logError(const char* format, ...)
 {
     va_list args;
     va_start(args, format);
-
+    IGNORE_FORMAT_STRING_ON
     auto size = _vscprintf(format, args) + 1U;
+    IGNORE_FORMAT_STRING_OFF
     std::unique_ptr<char[]> buf(new char[size] ); 
 
 #ifndef _MSC_VER
+    IGNORE_FORMAT_STRING_ON
     vsnprintf(buf.get(), size, format, args);
+    IGNORE_FORMAT_STRING_OFF
 #else
     vsnprintf_s(buf.get(), size, _TRUNCATE, format, args);
 #endif

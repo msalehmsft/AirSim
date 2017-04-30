@@ -68,6 +68,14 @@ public:
 				throw std::invalid_argument(Utils::stringf("expecting float value for switch '%s', but found '%s'", name.c_str(), value.c_str()));
 			}
 		}
+        TTimeDelta toTimeDelta() {
+            try {
+                return std::stod(value);
+            }
+            catch (std::exception&) {
+                throw std::invalid_argument(Utils::stringf("expecting TTimeDelta value for switch '%s', but found '%s'", name.c_str(), value.c_str()));
+            }
+        }
 		int toInt() {
 			try {
 				return std::stoi(value);
@@ -120,7 +128,8 @@ public:
         virtual bool execute(const ShellCommandParameters&) { return false; };
     private:
         ShellCommand(){}
-        ShellCommand(ShellCommand& other){}
+        ShellCommand(ShellCommand& other){
+        }
     };
 
 

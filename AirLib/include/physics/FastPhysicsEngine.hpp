@@ -24,13 +24,15 @@ public:
     //*** Start: UpdatableState implementation ***//
     virtual void reset() override
     {
-        //nothing to do yet
+        for (PhysicsBody* body_ptr : *this) {
+            body_ptr->last_kinematics_time = clock()->nowNanos();
+        }
     }
 
-    virtual void update(real_T dt) override
+    virtual void update() override
     {
         for (PhysicsBody* body_ptr : *this) {
-            updatePhysics(dt, *body_ptr);
+            updatePhysics(*body_ptr);
         }
     }
     virtual void reportState(StateReporter& reporter) override
@@ -47,8 +49,10 @@ public:
     //*** End: UpdatableState implementation ***//
 
 private:
-    void updatePhysics(real_T dt, PhysicsBody& body)
+    void updatePhysics(PhysicsBody& body)
     {
+        TTimeDelta dt = clock()->updateSince(body.last_kinematics_time);
+
         //get current kinematics state of the body - this state existed since last dt seconds
         const Kinematics::State& current = body.getKinematics();
         Kinematics::State next;
@@ -61,10 +65,10 @@ private:
         
         body.setKinematics(next);
         body.setWrench(next_wrench);
-        body.kinematicsUpdated(dt);
+        body.kinematicsUpdated();
     }
 
-    bool getNextKinematicsOnCollison(real_T dt, const PhysicsBody& body, const Kinematics::State& current, Kinematics::State& next, Wrench& next_wrench)
+    bool getNextKinematicsOnCollison(TTimeDelta dt, const PhysicsBody& body, const Kinematics::State& current, Kinematics::State& next, Wrench& next_wrench)
     {
         static constexpr uint kCollisionResponseCycles = 1;
 
@@ -142,7 +146,7 @@ private:
         return false;
     }
 
-    bool getNextKinematicsOnGround(real_T dt, const PhysicsBody& body, const Kinematics::State& current, Kinematics::State& next, Wrench& next_wrench)
+    bool getNextKinematicsOnGround(TTimeDelta dt, const PhysicsBody& body, const Kinematics::State& current, Kinematics::State& next, Wrench& next_wrench)
     {
         /************************* reset state if we have hit the ground ************************/
         real_T min_z_over_ground = body.getEnvironment().getState().min_z_over_ground;
@@ -151,7 +155,8 @@ private:
             grounded_ = 1;
             next.pose.position.z() = min_z_over_ground;
 
-            if (Utils::isDefinitelyLessThan(0.0f, next.twist.linear.z() + next.accelerations.linear.z() *dt)) {
+            real_T z_proj = static_cast<real_T>(next.twist.linear.z() + next.accelerations.linear.z() * dt);
+            if (Utils::isDefinitelyLessThan(0.0f, z_proj)) {
                 grounded_ = 2;
                 next.twist = Twist::zero();
                 next.accelerations.linear = Vector3r::Zero();

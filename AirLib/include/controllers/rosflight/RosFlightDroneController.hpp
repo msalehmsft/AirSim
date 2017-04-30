@@ -12,6 +12,7 @@
 #include "common/Common.hpp"
 #include "AirSimRosFlightBoard.hpp"
 #include "AirSimRosFlightCommLink.hpp"
+#include "controllers/Settings.hpp"
 
 STRICT_MODE_OFF
 #include "firmware/firmware.hpp"
@@ -31,6 +32,10 @@ public:
         comm_link_.reset(new AirSimRosFlightCommLink());
         firmware_.reset(new rosflight::Firmware(board_.get(), comm_link_.get()));
         firmware_->setup();
+
+        Settings child;
+        Settings::singleton().getChild("RosFlight", child);
+        remote_control_id_ = child.getInt("RemoteControlID", 0);
     }
 
     void initializePhysics(const Environment* environment, const Kinematics::State* kinematics)
@@ -46,7 +51,7 @@ public:
         board_->system_reset(false);
     }
 
-    virtual void update(real_T dt) override
+    virtual void update() override
     {
         board_->notifySensorUpdated(rosflight::Board::SensorType::Imu);
         firmware_->loop();
@@ -75,7 +80,7 @@ public:
         case 2: index_quadx = 3; break;
         case 3: index_quadx = 0; break;
         default:
-            throw std::exception("Rotor index beyond 3 is not supported yet in ROSFlight firmware");
+            throw std::runtime_error("Rotor index beyond 3 is not supported yet in ROSFlight firmware");
         }
 
         auto control_signal = board_->getMotorControlSignal(index_quadx);
@@ -128,12 +133,17 @@ public:
         return kinematics_->pose.orientation;
     }
 
+    virtual int getRemoteControlID()  override
+    { 
+        return remote_control_id_;
+    }
+    
     RCData getRCData() override
     {
         return RCData();
     }
 
-    void setRCData(const RCData& rcData)
+    void setRCData(const RCData& rcData) override
     {
         if (rcData.is_connected) {
             board_->setInputChannel(0, angleToPwm(rcData.roll)); //X
@@ -147,11 +157,6 @@ public:
             board_->setInputChannel(8, switchToPwm(rcData.switch5));
         }
         //else we don't have RC data
-    }
-    
-    double timestampNow() override
-    {
-        return Utils::getTimeSinceEpoch();
     }
 
     bool armDisarm(bool arm, CancelableBase& cancelable_action) override
@@ -260,6 +265,8 @@ private:
     const Kinematics::State* kinematics_;
     const Environment* environment_;
     const SensorCollection* sensors_;
+
+    int remote_control_id_ = 0;
 
     unique_ptr<AirSimRosFlightBoard> board_;
     unique_ptr<AirSimRosFlightCommLink> comm_link_;

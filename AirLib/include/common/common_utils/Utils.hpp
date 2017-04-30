@@ -21,7 +21,7 @@
 #include <iostream>
 #include <limits>
 #include <queue>
-
+#include "Log.hpp"
 #include "type_utils.hpp"
 
 #ifndef _WIN32
@@ -71,7 +71,9 @@ static int _vscprintf(const char * format, va_list pargs)
     int retval;
     va_list argcopy;
     va_copy(argcopy, pargs);
+    IGNORE_FORMAT_STRING_ON
     retval = vsnprintf(NULL, 0, format, argcopy);
+    IGNORE_FORMAT_STRING_OFF
     va_end(argcopy);
     return retval;
 }
@@ -121,25 +123,42 @@ public:
         return static_cast<float>(radians * 180.0f / M_PI);
     }
 
-    static void logMessage(const char* message, ...) {
+    static void logMessage(const char* format, ...) {
         va_list args;
-        va_start(args, message);
-        
-        vprintf(message, args);
-        printf("\n");
-        fflush (stdout);
-        
+        va_start(args, format);
+
+        auto size = _vscprintf(format, args) + 1U;
+        std::unique_ptr<char[]> buf(new char[size]);
+
+#ifndef _MSC_VER
+        IGNORE_FORMAT_STRING_ON
+        vsnprintf(buf.get(), size, format, args);
+        IGNORE_FORMAT_STRING_OFF
+#else
+        vsnprintf_s(buf.get(), size, _TRUNCATE, format, args);
+#endif
         va_end(args);
+
+        Log::getLog()->logMessage(buf.get());
     }
-    static void logError(const char* message, ...) {
+
+    static void logError(const char* format, ...) {
         va_list args;
-        va_start(args, message);
-        
-        vfprintf(stderr, message, args);
-        fprintf(stderr, "\n");
-        fflush (stderr);
-        
+        va_start(args, format);
+
+        auto size = _vscprintf(format, args) + 1U;
+        std::unique_ptr<char[]> buf(new char[size]);
+
+#ifndef _MSC_VER
+        IGNORE_FORMAT_STRING_ON
+        vsnprintf(buf.get(), size, format, args);
+        IGNORE_FORMAT_STRING_OFF
+#else
+        vsnprintf_s(buf.get(), size, _TRUNCATE, format, args);
+#endif
         va_end(args);
+
+        Log::getLog()->logError(buf.get());
     }
 
     template <typename T>
@@ -205,11 +224,15 @@ public:
         va_list args;
         va_start(args, format);
 
+        IGNORE_FORMAT_STRING_ON
         auto size = _vscprintf(format, args) + 1U;
+        IGNORE_FORMAT_STRING_OFF
         std::unique_ptr<char[]> buf(new char[size] ); 
 
         #ifndef _MSC_VER
+            IGNORE_FORMAT_STRING_ON
             vsnprintf(buf.get(), size, format, args);
+            IGNORE_FORMAT_STRING_OFF
         #else
             vsnprintf_s(buf.get(), size, _TRUNCATE, format, args);
         #endif
@@ -431,7 +454,7 @@ public:
 
     static string to_string(time_point<system_clock> time)
     {
-        return to_string(now(), "%Y-%m-%d-%H-%M-%S");
+        return to_string(time, "%Y-%m-%d-%H-%M-%S");
 
         /* GCC doesn't implement put_time yet
         stringstream ss;
@@ -458,18 +481,22 @@ public:
         return ptr ? ptr : "";
     }
 
-    //Unix timestamp
-    static unsigned long getTimeSinceEpochMillis(std::time_t* t = nullptr)
+    static unsigned long getUnixTimeStamp(std::time_t* t = nullptr)
     {
         std::time_t st = std::time(t);
         auto millies = static_cast<std::chrono::milliseconds>(st).count();
         return static_cast<unsigned long>(millies);
     }
     //high precision time in seconds since epoch
-    static double getTimeSinceEpoch(std::chrono::high_resolution_clock::time_point* t = nullptr)
+    static double getTimeSinceEpochSecs(std::chrono::high_resolution_clock::time_point* t = nullptr)
     {
         using Clock = std::chrono::high_resolution_clock;
         return std::chrono::duration<double>((t != nullptr ? *t : Clock::now() ).time_since_epoch()).count();
+    }
+    static unsigned long getTimeSinceEpochNanos(std::chrono::high_resolution_clock::time_point* t = nullptr)
+    {
+        using Clock = std::chrono::high_resolution_clock;
+        return static_cast<unsigned long>((t != nullptr ? *t : Clock::now() ).time_since_epoch().count());
     }
 
     template<typename T>

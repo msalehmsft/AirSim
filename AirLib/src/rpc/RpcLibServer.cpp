@@ -41,6 +41,7 @@ RpcLibServer::RpcLibServer(DroneControllerCancelable* drone, string server_addre
         : drone_(drone)
 {
     pimpl_.reset(new impl(server_address, port));
+    pimpl_->server.bind("ping", [&]() -> bool { return true; });
     pimpl_->server.bind("armDisarm", [&](bool arm) -> bool { return drone_->armDisarm(arm); });
     pimpl_->server.bind("setOffboardMode", [&](bool is_set) -> void { drone_->setOffboardMode(is_set); });
     pimpl_->server.bind("setSimulationMode", [&](bool is_set) -> void { drone_->setSimulationMode(is_set); });
@@ -92,7 +93,7 @@ RpcLibServer::RpcLibServer(DroneControllerCancelable* drone, string server_addre
     pimpl_->server.bind("getVelocity", [&]() -> RpcLibAdapators::Vector3r { return drone_->getVelocity(); });
     pimpl_->server.bind("getOrientation", [&]() -> RpcLibAdapators::Quaternionr { return drone_->getOrientation(); });
     pimpl_->server.bind("getRCData", [&]() -> RpcLibAdapators::RCData { return drone_->getRCData(); });
-    pimpl_->server.bind("timestampNow", [&]() -> double { return drone_->timestampNow(); });
+    pimpl_->server.bind("timestampNow", [&]() -> TTimePoint { return drone_->timestampNow(); });
     pimpl_->server.bind("getHomePoint", [&]() -> RpcLibAdapators::GeoPoint { return drone_->getHomePoint(); });
     pimpl_->server.bind("getGpsLocation", [&]() -> RpcLibAdapators::GeoPoint { return drone_->getGpsLocation(); });
     pimpl_->server.bind("isOffboardMode", [&]() -> bool { return drone_->isOffboardMode(); });
@@ -106,6 +107,7 @@ RpcLibServer::RpcLibServer(DroneControllerCancelable* drone, string server_addre
 RpcLibServer::~RpcLibServer()
 {
 	stop();
+	drone_ = nullptr;
 }
 
 void RpcLibServer::start(bool block)

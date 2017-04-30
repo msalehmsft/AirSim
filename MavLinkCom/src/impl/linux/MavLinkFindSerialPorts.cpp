@@ -1,13 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "../MavLinkConnectionImpl.hpp"
+#include "MavLinkConnection.hpp"
 
 using namespace mavlinkcom;
 using namespace mavlinkcom_impl;
 
-std::vector<SerialPortInfo> MavLinkConnectionImpl::findSerialPorts(int vid, int pid)
+std::vector<SerialPortInfo> MavLinkConnection::findSerialPorts(int vid, int pid)
 {
+    vid; // avoid warning: unused parameter
+    pid; // avoid warning: unused parameter
     // todo: not implemented on Linux yet...  probably need to do an lstat on '/dev/serial/by-id' and find
     // something that looks like PX4 and return that name, or follow the symbolic link to /dev/ttyACM0...
     std::vector<SerialPortInfo> result;

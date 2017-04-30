@@ -57,7 +57,8 @@ public:
 	virtual void PrintHelp() = 0;
 	// you must call this method if you want HandleMessage to be called subsequently.
 	virtual void Execute(std::shared_ptr<MavLinkVehicle> com);
-	virtual void HandleMessage(const MavLinkMessage& msg) {}
+	virtual void HandleMessage(const MavLinkMessage& msg) {
+    }
 
     static std::vector<std::string> parseArgs(std::string s);
     static Command* create(const std::string& line);
@@ -349,6 +350,28 @@ public:
 
 };
 
+class HilCommand : public Command
+{
+    bool started = false;
+    std::thread hil_thread;
+    std::shared_ptr<MavLinkVehicle> com;
+public:
+    HilCommand() {
+        this->Name = "hil [start|stop]";
+    }
+    virtual bool Parse(const std::vector<std::string>& args);
+
+    virtual void PrintHelp() {
+        printf("hil [start|stop] - start stop simple hil simulation mode to generate fake GPS input.\n");
+    }
+
+    virtual void Execute(std::shared_ptr<MavLinkVehicle> mav);
+
+    void HilThread();
+
+    float addNoise(float x, float scale);
+};
+
 class SendImageCommand : public Command
 {
 	std::shared_ptr<MavLinkNode> logViewer;
@@ -378,7 +401,7 @@ class PlayLogCommand : public Command
 {
 public:
     PlayLogCommand() {
-        this->Name = "playlog filename";
+        this->Name = "playlog filename";		
     }
 
     virtual bool Parse(const std::vector<std::string>& args);
@@ -390,9 +413,11 @@ public:
     virtual void Execute(std::shared_ptr<MavLinkVehicle> com);
 
 private:
-    MavLinkLog log_;
+    MavLinkFileLog log_;
     float quaternion_[4];
     float x, y, z;
+    std::string _fileName;
+	bool _syncParams;
 };
 
 
@@ -411,7 +436,7 @@ public:
 
     virtual void Execute(std::shared_ptr<MavLinkVehicle> com);
 private:
-    static void processLogCommands(MavLinkLog& log, const std::string& out_folder);
+    static void processLogCommands(MavLinkFileLog& log, const std::string& out_folder);
 
 private:
     std::string log_folder_;
@@ -722,7 +747,7 @@ class FtpCommand : public Command
 {
 public:
 	FtpCommand() {
-		this->Name = "ls [dir]\ncd name\nget remoteFile [localFile]\nput localFile remoteFile\nrm remoteFile]";
+		this->Name = "ls [dir]\ncd name\nget remoteFile [localFile]\nput localFile remoteFile\nrm remoteFile\nmkdir remotepath\nrmdir remotepath]";
 		this->cmd = none;
 	}
 	virtual bool Parse(const std::vector<std::string>& args);
@@ -741,13 +766,15 @@ private:
 	void doGet();
 	void doPut();
 	void doRemove();
+    void doMkdir();
+    void doRmdir();
 	void monitor();
 	bool parse(const std::string& name, bool& wildcards) const;
 	bool matches(const std::string& pattern, const std::string& name) const;
 	void startMonitor();
 	void stopMonitor();
 	enum FtpCommandEnum {
-		none, list, cd, get, put, remove
+		none, list, cd, get, put, remove, mkdir, rmdir
 	};
 	FtpCommandEnum cmd;
 	std::string source;

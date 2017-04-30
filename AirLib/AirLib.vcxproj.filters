@@ -309,16 +309,22 @@
     <ClInclude Include="include\vehicles\configs\RosFlightQuadX.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\vehicles\configs\BlacksheepQuadX.hpp">
+    <ClInclude Include="include\common\common_utils\Log.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\vehicles\configs\PX4ConfigCreator.hpp">
+    <ClInclude Include="include\vehicles\MultiRotorParamsFactory.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\vehicles\configs\FlamewheelQuadX.hpp">
+    <ClInclude Include="include\vehicles\configs\Px4QuadX.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\vehicles\configs\Px4HILQuadX.hpp">
+    <ClInclude Include="include\common\ClockBase.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\SimClock.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\ClockFactory.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -345,6 +351,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\controllers\FileSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\controllers\Log.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -302,7 +302,6 @@ public:
 
 	int setAttributes(int baudRate, Parity parity, int dataBits, StopBits stopBits, Handshake handshake, int readTimeout, int writeTimeout)
 	{
-
 		struct termios tty;
 		::memset(&tty, 0, sizeof tty);
 		if (tcgetattr(fd, &tty) != 0)

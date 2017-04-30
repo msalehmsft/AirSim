@@ -1,19 +1,66 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "../MavLinkConnectionImpl.hpp"
+#include "MavLinkConnection.hpp"
 #include <Windows.h>
 #include <ObjIdl.h>
 #include <SetupAPI.h>
 #include <Cfgmgr32.h>
 #define INITGUID
 #include <propkey.h>
-#include <Devpkey.h>
+#include <string>
 
 using namespace mavlinkcom;
 using namespace mavlinkcom_impl;
 
-std::vector<SerialPortInfo> MavLinkConnectionImpl::findSerialPorts(int vid, int pid)
+// {4d36e978-e325-11ce-bfc1-08002be10318}
+const GUID serialDeviceClass = { 0x4d36e978, 0xe325, 0x11ce, 0xBF, 0xC1, 0x08, 0x00, 0x2B, 0xE1, 0x03, 0x18 };
+
+
+bool parseVidPid(std::wstring deviceId, int* vid, int* pid)
+{
+    const wchar_t* ptr = deviceId.c_str();
+    const wchar_t* end = ptr + deviceId.size();
+    // parse out the VID number
+    const wchar_t* pos = wcsstr(ptr, L"\\VID_");
+    if (pos == NULL) {
+        return false;
+    }
+    wchar_t* numberEnd = NULL;
+    long c = wcstol(pos + 5, &numberEnd, 16);
+    *vid = (int)c;
+
+    // now the PID 
+    pos = wcsstr(numberEnd, L"PID_");
+    if (pos == NULL) {
+        return false;
+    }
+
+    numberEnd = NULL;
+    c = wcstol(pos + 4, &numberEnd, 16);
+    *pid = (int)c;
+
+    return true;
+}
+
+void parseDisplayName(std::wstring displayName, SerialPortInfo* info)
+{
+    info->displayName = displayName;
+    const wchar_t* ptr = displayName.c_str();
+    // parse out the VID number
+    const wchar_t* pos = wcsrchr(ptr, '(');
+    if (pos == NULL) {
+        return;
+    }
+    pos++; // skip '('
+    const wchar_t* end = wcschr(pos, ')');
+    if (end != NULL) {
+        info->portName = std::wstring(pos, (size_t)(end - pos));
+    }
+}
+
+
+std::vector<SerialPortInfo> MavLinkConnection::findSerialPorts(int vid, int pid)
 {
     bool debug = false;
     std::vector<SerialPortInfo> result;

@@ -83,13 +83,17 @@ void MavLinkNodeImpl::close()
             heartbeat_thread_.join();
         }
     }
+    if (connection_ != nullptr) {
+        connection_->close();
+    }
 	connection_ = nullptr;
 }
 
 AsyncResult<MavLinkAutopilotVersion> MavLinkNodeImpl::getCapabilities()
 {
 	if (has_cap_) {
-		AsyncResult<MavLinkAutopilotVersion> nowait([=](int state) {});
+		AsyncResult<MavLinkAutopilotVersion> nowait([=](int state) {
+        });
 		nowait.setResult(cap_);
 		return nowait;
 	}

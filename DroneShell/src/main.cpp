@@ -17,6 +17,7 @@
 #include "controllers/DroneCommon.hpp"
 #include "controllers/DroneControllerBase.hpp"
 #include "safety/SafetyEval.hpp"
+#include "common/ClockFactory.hpp"
 
 
 namespace msr { namespace airlib {
@@ -26,8 +27,21 @@ using namespace common_utils;
 
 struct CommandContext {
 public:
+    CommandContext(const std::string& server_address = "127.0.0.1")
+        : client(server_address)
+    {
+    }
+
     RpcLibClient client;
     AsyncTasker tasker;
+
+    void sleep_for(TTimeDelta wall_clock_dt)
+    {
+        clock_->sleep_for(wall_clock_dt);
+    }
+
+private:
+    ClockBase* clock_ = ClockFactory::get();
 };
 
 using DroneCommandParameters = SimpleShell<CommandContext>::ShellCommandParameters;
@@ -559,15 +573,19 @@ public:
         float z = getSwitch("-z").toFloat();
         float duration = getSwitch("-duration").toFloat();
         float yaw = getSwitch("-yaw").toFloat();
-        float pause_time = getSwitch("-pause_time").toFloat();
+        TTimeDelta pause_time = getSwitch("-pause_time").toTimeDelta();
 		int iterations = getSwitch("-iterations").toInt();
         CommandContext* context = params.context;
 
         context->tasker.execute([=]() {
-            context->client.moveByAngle(pitch, roll, z, yaw, duration);
+            if (!context->client.moveByAngle(pitch, roll, z, yaw, duration)) {
+                throw std::runtime_error("BackForthByAngleCommand cancelled");
+            }
             context->client.hover();
-            std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
-            context->client.moveByAngle(-pitch, -roll, z, yaw, duration);
+            context->sleep_for(pause_time);
+            if (!context->client.moveByAngle(-pitch, -roll, z, yaw, duration)){
+                throw std::runtime_error("BackForthByAngleCommand cancelled");
+            }
         }, iterations);
         
         return false;
@@ -594,7 +612,7 @@ public:
         float length = getSwitch("-length").toFloat();
         float z = getSwitch("-z").toFloat();
         float velocity = getSwitch("-velocity").toFloat();
-        float pause_time = getSwitch("-pause_time").toFloat();
+        TTimeDelta pause_time = getSwitch("-pause_time").toTimeDelta();
         int iterations = getSwitch("-iterations").toInt();
         auto drivetrain = getDriveTrain();
         float lookahead = getSwitch("-lookahead").toFloat();
@@ -603,14 +621,18 @@ public:
         CommandContext* context = params.context;
 
         context->tasker.execute([=]() {
-            context->client.moveToPosition(length, 0, z, velocity, drivetrain,
-                yawMode, lookahead, adaptive_lookahead);
+            if (!context->client.moveToPosition(length, 0, z, velocity, drivetrain,
+                yawMode, lookahead, adaptive_lookahead)) {
+                 throw std::runtime_error("BackForthByPositionCommand cancelled");
+            }
             context->client.hover();
-            std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
-            context->client.moveToPosition(-length, 0, z, velocity, drivetrain,
-                yawMode, lookahead, adaptive_lookahead);
+            context->sleep_for(pause_time);
+            if (!context->client.moveToPosition(-length, 0, z, velocity, drivetrain,
+                yawMode, lookahead, adaptive_lookahead)){
+                throw std::runtime_error("BackForthByPositionCommand cancelled");
+            }
             context->client.hover();
-            std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
+            context->sleep_for(pause_time);
         }, iterations);
 
         return false;
@@ -638,23 +660,31 @@ public:
         float z = getSwitch("-z").toFloat();
         float duration = getSwitch("-duration").toFloat();
         float yaw = getSwitch("-yaw").toFloat();
-        float pause_time = getSwitch("-pause_time").toFloat();
+        TTimeDelta pause_time = getSwitch("-pause_time").toTimeDelta();
 		int iterations = getSwitch("-iterations").toInt();
         CommandContext* context = params.context;
 
         context->tasker.execute([=]() {
-            context->client.moveByAngle(pitch, -roll, z, yaw, duration);
+            if (!context->client.moveByAngle(pitch, -roll, z, yaw, duration)) {
+                throw std::runtime_error("SquareByAngleCommand cancelled");
+            }
             context->client.hover();
-            std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
-            context->client.moveByAngle(-pitch, -roll, z, yaw, duration);
+            context->sleep_for(pause_time);
+            if (!context->client.moveByAngle(-pitch, -roll, z, yaw, duration)) {
+                throw std::runtime_error("SquareByAngleCommand cancelled");
+            }
             context->client.hover();
-            std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
-            context->client.moveByAngle(-pitch, roll, z, yaw, duration);
+            context->sleep_for(pause_time);
+            if (!context->client.moveByAngle(-pitch, roll, z, yaw, duration)) {
+                throw std::runtime_error("SquareByAngleCommand cancelled");
+            }
             context->client.hover();
-            std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
-            context->client.moveByAngle(-pitch, -roll, z, yaw, duration);
+            context->sleep_for(pause_time);
+            if (!context->client.moveByAngle(-pitch, -roll, z, yaw, duration)){
+                throw std::runtime_error("SquareByAngleCommand cancelled");
+            }
             context->client.hover();
-            std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
+            context->sleep_for(pause_time);
         }, iterations);
 
         return false;
@@ -684,7 +714,7 @@ public:
         float length = getSwitch("-length").toFloat();
         float z = getSwitch("-z").toFloat();
         float velocity = getSwitch("-velocity").toFloat();
-        float pause_time = getSwitch("-pause_time").toFloat();
+        TTimeDelta pause_time = getSwitch("-pause_time").toTimeDelta();
 		int iterations = getSwitch("-iterations").toInt();
         auto drivetrain = getDriveTrain();
         float lookahead = getSwitch("-lookahead").toFloat();
@@ -700,22 +730,30 @@ public:
 		}
 
         context->tasker.execute([=]() {
-            context->client.moveToPosition(x + length, y - length, z, velocity, drivetrain,
-                yawMode, lookahead, adaptive_lookahead);
+            if (!context->client.moveToPosition(x + length, y - length, z, velocity, drivetrain,
+                yawMode, lookahead, adaptive_lookahead)){
+                throw std::runtime_error("SquareByPositionCommand cancelled");
+            }
             context->client.hover();
-            std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
-            context->client.moveToPosition(x - length, y - length, z, velocity, drivetrain,
-                yawMode, lookahead, adaptive_lookahead);
+            context->sleep_for(pause_time);
+            if (!context->client.moveToPosition(x - length, y - length, z, velocity, drivetrain,
+                yawMode, lookahead, adaptive_lookahead)){
+                throw std::runtime_error("SquareByPositionCommand cancelled");
+            }
             context->client.hover();
-            std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
-            context->client.moveToPosition(x - length, y + length, z, velocity, drivetrain,
-                yawMode, lookahead, adaptive_lookahead);
+            context->sleep_for(pause_time);
+            if (!context->client.moveToPosition(x - length, y + length, z, velocity, drivetrain,
+                yawMode, lookahead, adaptive_lookahead)){
+                throw std::runtime_error("SquareByPositionCommand cancelled");
+            }
             context->client.hover();
-            std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
-            context->client.moveToPosition(x + length, y + length, z, velocity, drivetrain,
-                yawMode, lookahead, adaptive_lookahead);
+            context->sleep_for(pause_time);
+            if (!context->client.moveToPosition(x + length, y + length, z, velocity, drivetrain,
+                yawMode, lookahead, adaptive_lookahead)){
+                throw std::runtime_error("SquareByPositionCommand cancelled");
+            }
             context->client.hover();
-            std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
+            context->sleep_for(pause_time);
         }, iterations);
 
         return false;
@@ -744,7 +782,7 @@ public:
         float length = getSwitch("-length").toFloat();
         float z = getSwitch("-z").toFloat();
         float velocity = getSwitch("-velocity").toFloat();
-        //float pause_time = getSwitch("-pause_time").toFloat();
+        //TTimeDelta pause_time = getSwitch("-pause_time").toTimeDelta();
 		int iterations = getSwitch("-iterations").toInt();
         auto drivetrain = getDriveTrain();
         float lookahead = getSwitch("-lookahead").toFloat();
@@ -769,7 +807,9 @@ public:
         }
 
         context->tasker.execute([=]() {
-            context->client.moveOnPath(path, velocity, drivetrain, yawMode, lookahead, adaptive_lookahead);
+            if (!context->client.moveOnPath(path, velocity, drivetrain, yawMode, lookahead, adaptive_lookahead)){
+                throw std::runtime_error("SquareByPathCommand cancelled");
+            }
         }, iterations);
 
         return false;
@@ -801,7 +841,7 @@ public:
         float radius = getSwitch("-radius").toFloat();
         float z = getSwitch("-z").toFloat();
         float seg_length = getSwitch("-seg_length").toFloat();
-        float pause_time = getSwitch("-pause_time").toFloat();
+        TTimeDelta pause_time = getSwitch("-pause_time").toTimeDelta();
         float velocity = getSwitch("-velocity").toFloat();
         auto drivetrain = getDriveTrain();
         float lookahead = getSwitch("-lookahead").toFloat();
@@ -827,10 +867,12 @@ public:
             for(float seg = 0; seg < seg_count; ++seg) {
                 float x = cx + std::cos(seg_angle * seg) * radius;
                 float y = cy + std::sin(seg_angle * seg) * radius;
-                context->client.moveToPosition(x, y, z, velocity, drivetrain,
-                    yawMode, lookahead, adaptive_lookahead);
+                if (!context->client.moveToPosition(x, y, z, velocity, drivetrain,
+                    yawMode, lookahead, adaptive_lookahead)){
+                    throw std::runtime_error("CircleByPositionCommand cancelled");
+                }
                 context->client.hover();
-                std::this_thread::sleep_for(std::chrono::duration<double>(pause_time));
+                context->sleep_for(pause_time);
             }
         }, iterations);
 
@@ -891,6 +933,7 @@ public:
         const Vector3r origin = plane != "xy" && plane != "yx" ? Vector3r(cx, cy, z_path + radius) : Vector3r(cx, cy, z_path);
 
         std::vector<Vector3r> path;
+        path.reserve(path_rep * seg_count);
         for(int i = 0; i < path_rep; ++i) {
             for(float seg = 0; seg < seg_count; ++seg) {
                 float x = std::cos(seg_angle * seg) * radius;
@@ -909,7 +952,9 @@ public:
         }
 
         context->tasker.execute([=]() {
-            context->client.moveOnPath(path, velocity, drivetrain, yawMode, lookahead, adaptive_lookahead);
+            if (!context->client.moveOnPath(path, velocity, drivetrain, yawMode, lookahead, adaptive_lookahead)) {
+                throw std::runtime_error("moveOnPath cancelled");
+            }
         }, iterations);
 
         return false;
@@ -1016,7 +1061,7 @@ public:
         this->addSwitch({ "-pause_time", "100", "pause time between each image in milliseconds (default 100)" });
     }
 
-    void getImages(CommandContext* context, DroneControllerBase::ImageType imageType, std::string baseName, int iterations, int pause_time)
+    void getImages(CommandContext* context, DroneControllerBase::ImageType imageType, std::string baseName, int iterations, TTimeDelta pause_time)
     {
         // group the images by the current date.
         std::string folderName = Utils::to_string(Utils::now(), "%Y-%m-%d");
@@ -1025,14 +1070,16 @@ public:
         for (int i = 0; i < iterations; i++) {
 
             context->client.setImageTypeForCamera(0, imageType);
-            std::this_thread::sleep_for(std::chrono::milliseconds(100)); // give it time to generate image.
+            //TODO: we shouldn't have wait like this!
+            // give it time to generate image.
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             auto image = context->client.getImageForCamera(0, imageType);            
             // turn it off again so simulator doesn't choke...
             context->client.setImageTypeForCamera(0, DroneControllerBase::ImageType::None);
 
             // size 1 is a trick we had to do to keep RPCLIB happy...
             if (image.size() <= 1) {
-                cout << "error getting image, check sim for error messages" << endl;
+                std::cout << "error getting image, check sim for error messages" << endl;
                 return;
             }
 
@@ -1044,9 +1091,9 @@ public:
             file.write(reinterpret_cast<const char*>(image.data()), image.size());
             file.close();
 
-            cout << "Image saved to: " << file_path_name << " (" << image.size() << " bytes)" << endl;
+            std::cout << "Image saved to: " << file_path_name << " (" << image.size() << " bytes)" << endl;
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(pause_time));
+            context->sleep_for(pause_time);
         }
 
     }
@@ -1056,7 +1103,7 @@ public:
         std::string type = getSwitch("-type").value;
         std::string name = getSwitch("-name").value;
         int iterations = std::stoi(getSwitch("-iterations").value);
-        int pause_time = std::stoi(getSwitch("-pause_time").value);
+        TTimeDelta pause_time = getSwitch("-pause_time").toTimeDelta();
         CommandContext* context = params.context;
 
         DroneControllerBase::ImageType imageType;
@@ -1140,7 +1187,7 @@ int main(int argc, const char *argv[]) {
         return -1;
     }
 
-    CommandContext command_context{ /*RpcClient*/{server_address}, /*AsyncTasker*/ {} };
+	CommandContext command_context(server_address);
 
     command_context.tasker.setErrorHandler([](std::exception& e) {
         try {
@@ -1152,6 +1199,7 @@ int main(int argc, const char *argv[]) {
         }
     });
 
+
     SimpleShell<CommandContext> shell("==||=> ");
 
     shell.showMessage(R"(
@@ -1159,6 +1207,26 @@ int main(int argc, const char *argv[]) {
         Type ? for help.
         Microsoft Research (c) 2016.
     )");
+
+    // make sure we can talk to the DroneServer
+    std::cout << "Contacting DroneServer..." << std::flush;
+    command_context.client.ping();
+    std::cout << "DroneServer is responding." << std::endl;
+
+	std::cout << "Waiting for drone to report a valid GPS location..." << std::flush;
+	const TTimeDelta pause_time = 1;
+
+	auto gps = command_context.client.getGpsLocation();
+	while (gps.latitude == 0 && gps.longitude == 0 && gps.altitude == 0)
+	{
+		std::cout << "." << std::flush;
+        command_context.sleep_for(pause_time); 
+		gps = command_context.client.getGpsLocation();
+	}
+	
+	std::cout << std::endl;
+    std::cout << "Global position: lat=" << gps.latitude << ", lon=" << gps.longitude << ", alt=" << gps.altitude << std::endl;
+	
 
     //Shell callbacks
     // shell.beforeScriptStartCallback(std::bind(&beforeScriptStartCallback, std::placeholders::_1, std::placeholders::_2));

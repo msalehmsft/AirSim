@@ -48,6 +48,10 @@ RpcLibClient::RpcLibClient(const string&  ip_address, uint16_t port)
 RpcLibClient::~RpcLibClient()
 {}
 
+bool RpcLibClient::ping()
+{
+    return pimpl_->client.call("ping").as<bool>();
+}
 bool RpcLibClient::armDisarm(bool arm)
 {
     return pimpl_->client.call("armDisarm", arm).as<bool>();
@@ -162,9 +166,9 @@ RCData RpcLibClient::getRCData()
     return pimpl_->client.call("getRCData").as<RpcLibAdapators::RCData>().to();
 }
 
-double RpcLibClient::timestampNow()
+TTimePoint RpcLibClient::timestampNow()
 {
-    return pimpl_->client.call("timestampNow").as<double>();
+    return pimpl_->client.call("timestampNow").as<TTimePoint>();
 }
 
 GeoPoint RpcLibClient::getHomePoint()

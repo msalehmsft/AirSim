@@ -19,13 +19,16 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\common\ClockBase.hpp" />
     <ClInclude Include="include\common\Common.hpp" />
     <ClInclude Include="include\common\CommonStructs.hpp" />
+    <ClInclude Include="include\common\ClockFactory.hpp" />
     <ClInclude Include="include\common\common_utils\ctpl_stl.h" />
     <ClInclude Include="include\common\common_utils\EnumFlags.hpp" />
     <ClInclude Include="include\common\common_utils\ExceptionUtils.hpp" />
     <ClInclude Include="include\common\common_utils\FileSystem.hpp" />
     <ClInclude Include="include\common\common_utils\json.hpp" />
+    <ClInclude Include="include\common\common_utils\Log.hpp" />
     <ClInclude Include="include\common\common_utils\MedianFilter.hpp" />
     <ClInclude Include="include\common\common_utils\OnlineStats.hpp" />
     <ClInclude Include="include\common\common_utils\optional.hpp" />
@@ -44,6 +47,7 @@
     <ClInclude Include="include\common\GaussianMarkov.hpp" />
     <ClInclude Include="include\common\GeodeticConverter.hpp" />
     <ClInclude Include="include\common\LogFileWriter.hpp" />
+    <ClInclude Include="include\common\SimClock.hpp" />
     <ClInclude Include="include\common\StateReporter.hpp" />
     <ClInclude Include="include\common\StateReporterWrapper.hpp" />
     <ClInclude Include="include\common\UpdatableContainer.hpp" />
@@ -107,10 +111,7 @@
     <ClInclude Include="include\sensors\magnetometer\MagnetometerSimpleParams.hpp" />
     <ClInclude Include="include\sensors\SensorBase.hpp" />
     <ClInclude Include="include\sensors\SensorCollection.hpp" />
-    <ClInclude Include="include\vehicles\configs\BlacksheepQuadX.hpp" />
-    <ClInclude Include="include\vehicles\configs\FlamewheelQuadX.hpp" />
-    <ClInclude Include="include\vehicles\configs\PX4ConfigCreator.hpp" />
-    <ClInclude Include="include\vehicles\configs\Px4HILQuadX.hpp" />
+    <ClInclude Include="include\vehicles\configs\Px4QuadX.hpp" />
     <ClInclude Include="include\controllers\ControllerBase.hpp" />
     <ClInclude Include="include\controllers\MotorDirectController.hpp" />
     <ClInclude Include="include\controllers\MotorDirectControllerParams.hpp" />
@@ -119,11 +120,13 @@
     <ClInclude Include="include\vehicles\configs\RosFlightQuadX.hpp" />
     <ClInclude Include="include\vehicles\MultiRotor.hpp" />
     <ClInclude Include="include\vehicles\MultiRotorParams.hpp" />
+    <ClInclude Include="include\vehicles\MultiRotorParamsFactory.hpp" />
     <ClInclude Include="include\vehicles\Rotor.hpp" />
     <ClInclude Include="include\vehicles\RotorParams.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\controllers\DroneControllerBase.cpp" />
+    <ClCompile Include="src\controllers\Log.cpp" />
     <ClCompile Include="src\controllers\MavLinkDroneController.cpp" />
     <ClCompile Include="src\safety\ObstacleMap.cpp" />
     <ClCompile Include="src\rpc\RpcLibClient.cpp" />

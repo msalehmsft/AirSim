@@ -338,12 +338,16 @@ bool TakeOffCommand::Parse(const std::vector<std::string>& args)
     if (args.size() > 0) {
         std::string cmd = args[0];
         if (cmd == "takeoff") {
-            altitude = 5; // default
+			altitude = 0;
             if (args.size() > 1)
             {
                 altitude = static_cast<float>(atof(args[1].c_str()));
+				if (altitude > 0) {
+					return true;
+				}
             }
-            return true;
+			printf("Please provide a positive number, meters above current altitude\n");
+			return false;
         }
     }
     return false;
@@ -358,7 +362,10 @@ void TakeOffCommand::Execute(std::shared_ptr<MavLinkVehicle> com)
     reached = false;
     offground = false;
     bool rc = false;
-    if (com->takeoff(-altitude).wait(3000, &rc)) {
+	// convert target altitude to a 'z' coordinate (in NED coordinates).
+	auto state = com->getVehicleState();
+	float targetZ = state.local_est.pos.z - altitude;
+    if (com->takeoff(targetZ).wait(3000, &rc)) {
         if (rc) {
             printf("ok\n");
         }
@@ -389,7 +396,7 @@ bool DumpLogCommandsCommand::Parse(const std::vector<std::string>& args)
     return false;
 }
 
-void DumpLogCommandsCommand::processLogCommands(MavLinkLog& log, const std::string& out_folder)
+void DumpLogCommandsCommand::processLogCommands(MavLinkFileLog& log, const std::string& out_folder)
 {
     MavLinkMessage msg;
     uint64_t log_timestamp, log_start_timestamp = 0, command_start_timestamp;
@@ -473,7 +480,7 @@ void DumpLogCommandsCommand::Execute(std::shared_ptr<MavLinkVehicle> com)
         if (ext == ".mavlink") {
             auto out_folder = FileSystem::createDirectory(FileSystem::combine(log_folder_, path.filename().stem().generic_string()));
 
-            MavLinkLog log;
+            MavLinkFileLog log;
             log.openForReading(path.generic_string());
             processLogCommands(log, out_folder);
         }
@@ -490,18 +497,63 @@ bool PlayLogCommand::Parse(const std::vector<std::string>& args)
 {
     if (args.size() <= 0)
         return false;
-    
+
+	this->_syncParams = false;
+	this->_fileName = "";
+
     std::string cmd = args[0];
     if (cmd == "playlog") {
-        if (args.size() > 1) {
-            log_.openForReading(args.at(1));
-            return true;
-        } 
-        else {
-            printf("Usage: playlog <mavlink_logfile>\n");
+		for (size_t i = 1; i < args.size(); i++)
+		{
+			std::string arg = args.at(i);
+			if (arg == "-sync") {
+				this->_syncParams = true;
+			}
+			else if (_fileName == "") {
+				_fileName = args.at(1);
+				log_.openForReading(_fileName);
+			}
+			else {
+				printf("Usage: playlog <mavlink_logfile>\n");
+				return false;
+			}
         }
+		if (_fileName == "") {
+			printf("Usage: playlog <mavlink_logfile>\n");
+			return false;
+		}
     }
     return false;
+}
+
+void SyncParamValue(std::shared_ptr<MavLinkVehicle> com, std::vector<MavLinkParameter>& params, MavLinkParamValue& param)
+{
+	MavLinkParameter  p;
+	p.index = param.param_index;
+	p.type = param.param_type;
+	char buf[17];
+	std::memset(buf, 0, 17);
+	std::memcpy(buf, param.param_id, 16);
+	p.name = buf;
+	p.value = param.param_value;
+
+	for (auto iter = params.begin(), end = params.end(); iter != end; iter++)
+	{
+		MavLinkParameter q = *iter;
+		if (q.name == p.name) {
+			if (q.value != p.value) {
+				printf("Parameter %s has different value %f, recorded value was %f\n",
+					p.name.c_str(), q.value, p.value);
+				if (p.name.substr(0, 3) == "MC_") {
+					// these PID values are important, so set these to match
+					bool r;
+					if (!com->setParameter(p).wait(1000, &r) || !r) {
+						printf("error setting parameter %s\n", p.name.c_str());
+					}
+				}
+			}
+		}
+	}
 }
 
 void PlayLogCommand::Execute(std::shared_ptr<MavLinkVehicle> com)
@@ -512,43 +564,52 @@ void PlayLogCommand::Execute(std::shared_ptr<MavLinkVehicle> com)
     uint64_t log_timestamp, log_start_timestamp = 0;
     uint64_t playback_timestamp, playback_start_timestamp;
 	Command* currentCommand = nullptr;
-    playback_timestamp = playback_start_timestamp = MavLinkLog::getTimeStamp();
+    bool armed = false;
+    playback_timestamp = playback_start_timestamp = MavLinkFileLog::getTimeStamp();
     uint16_t last_basemode = -1, last_custommode = -1;
+
+	std::vector<MavLinkParameter> params;
+	if (this->_syncParams) {
+		printf("Comparing parameters with recorded log...\n");
+		try {
+			params = com->getParamList();
+		}
+		catch (std::exception e) {
+			printf("%s\n", e.what());
+		}
+	}
+    printf("loading log...\n");
 
     while (log_.read(msg, log_timestamp)) {
         if (log_start_timestamp == 0)
             log_start_timestamp = log_timestamp;
 
+		//sync clocks all the time so that the yellow ribbon also plays back at the right speed.
+		auto current_timestamp = MavLinkFileLog::getTimeStamp();
+		long logDuration = static_cast<long>(log_timestamp - log_start_timestamp);
+		long realDuration = static_cast<long>(current_timestamp - playback_start_timestamp);
+		long waitMicros = logDuration - realDuration;
+		if (waitMicros > 0) {
+            if (armed) {
+                if (waitMicros > 1E6) { //1s
+                    printf("synchronizing clocks for %f sec\n", waitMicros / 1E6f);
+                }
+                std::this_thread::sleep_for(std::chrono::microseconds(waitMicros));
+            }
+            else {
+                // we can skip ahead.
+                playback_start_timestamp -= waitMicros;
+            }
+		}
+		else {
+			// our clock fell behind somehow (debug breakpoint?) So fix it by moving our start time forwards by this amount.
+			playback_start_timestamp -= waitMicros;
+		}
+
         switch (msg.msgid)
         {
         case MavLinkStatustext::kMessageId: {
-            //sync clocks
-            auto current_timestamp = MavLinkLog::getTimeStamp();
-			long logDuration = static_cast<long>(log_timestamp - log_start_timestamp);
-			long realDuration = static_cast<long>(current_timestamp - playback_start_timestamp);
-			long waitMicros = logDuration - realDuration;
-            if (waitMicros > 0) {
-				auto state = com->getVehicleState();
-				if (state.controls.landed) {
-					// then we can fast forward the clocks by pushing back our start time so that it appears we are now at this new log time.
-					if (waitMicros > 1E6) { //1s
-						printf("fast forwarding clock by %f sec\n", waitMicros / 1E6f);
-					}
-					playback_start_timestamp -= waitMicros;
-				}
-				else {
-					// drone is flying so we have to stick with real time playback to get proper simulation behavior.
-					if (waitMicros > 1E6) { //1s
-						printf("synchronizing clocks for %f sec\n", waitMicros / 1E6f);
-					}
-					std::this_thread::sleep_for(std::chrono::microseconds(waitMicros));
-				}
-			}
-			else {
-				// our clock fell behind somehow (debug breakpoint?) So fix it by moving our start time forwards by this amount.
-				playback_start_timestamp -= waitMicros;
-			}
-
+            
             MavLinkStatustext status_msg;
             status_msg.decode(msg);
             if (std::strstr(status_msg.text, kCommandLogPrefix) == status_msg.text) {
@@ -559,13 +620,14 @@ void PlayLogCommand::Execute(std::shared_ptr<MavLinkVehicle> com)
 				}
                 printf("Executing %s\n", line.c_str());
 				try {
+                    if (Utils::toLower(line) == "arm") {
+                        armed = true;
+                    }
 					if (currentCommand != nullptr) {
 						currentCommand->Close();
 					}
 					currentCommand = command;
 					currentCommand->Execute(com);
-					// give it time to respond to this command and perform appropriate state changes.
-					std::this_thread::sleep_for(std::chrono::seconds(1));
 				} catch (std::exception& e) {
 					printf("Error: %s\n", e.what());
 				}
@@ -613,6 +675,15 @@ void PlayLogCommand::Execute(std::shared_ptr<MavLinkVehicle> com)
 
             break;
         }
+		case MavLinkParamValue::kMessageId:
+		{
+			if (this->_syncParams) {
+				MavLinkParamValue param;
+				param.decode(msg);
+				SyncParamValue(com, params, param);
+			}
+			break;
+		}
         default:
             break;
         }
@@ -892,6 +963,112 @@ void PositionCommand::HandleMessage(const MavLinkMessage& message)
         pos.decode(message);
         printf("Local Position: x=%f, y=%f, z=%f\n", pos.x, pos.y, pos.z);
 
+    }
+}
+
+bool HilCommand::Parse(const std::vector<std::string>& args)
+{
+    started = false;
+    if (args.size() > 0) {
+        std::string cmd = args[0];
+        if (cmd == "hil") {
+            if (args.size() > 1)
+            {
+                std::string arg = args[1];
+                if (arg == "start") {
+                    started = true;
+                    hil_thread = std::thread(&HilCommand::HilThread, this);
+                }
+                else if (arg == "stop") {
+                    started = false;
+                    if (hil_thread.joinable()) {
+                        hil_thread.join();
+                    }
+                }
+                else {
+                    printf("hil [start|stop] - start stop simple hil simulation mode to generate fake GPS input.\n");
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+void HilCommand::Execute(std::shared_ptr<MavLinkVehicle> mav)
+{
+    // note: we do not reset com when Close() is called because we want to keep running.
+    // user has to invoke "hil stop" to stop the hil thread.
+    this->com = mav;
+
+    MavLinkSetMode setModeMessage;
+    setModeMessage.target_system = com->getTargetSystemId();
+    setModeMessage.base_mode = 32;  //HIL
+    com->sendMessage(setModeMessage);
+}
+
+float HilCommand::addNoise(float x, float scale)
+{
+    // generate random between 0 and 1
+    float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); 
+    // move to range -1 to 1
+    r = (r * 2) - 1;
+    // scale it
+    r *= scale;
+    // apply iy
+    return x + r;
+}
+
+void HilCommand::HilThread()
+{
+    int slices = 0;
+    while (started) {
+        slices++;
+
+        uint64_t usec = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+        MavLinkHilSensor hil_sensor;
+        hil_sensor.time_usec = usec;
+        hil_sensor.xacc = addNoise(0, 0.1f);
+        hil_sensor.yacc = addNoise(0, 0.1f);
+        hil_sensor.zacc = addNoise(-9.8f, 0.1f); // gravity
+        hil_sensor.xgyro = addNoise(0, 0.01f);
+        hil_sensor.ygyro = addNoise(0, 0.01f);
+        hil_sensor.zgyro = addNoise(0, 0.01f);
+        hil_sensor.xmag = addNoise(0.2f, 0.1f);
+        hil_sensor.ymag = addNoise(-0.7f, 0.1f);
+        hil_sensor.zmag = addNoise(0.45f, 0.1f);
+        hil_sensor.pressure_alt = addNoise(122, 1);
+        hil_sensor.fields_updated = 1 << 31;
+
+        if (com != nullptr) {
+            com->sendMessage(hil_sensor);
+        }
+
+        if (slices == 10) {
+            slices = 0;
+            // gps is much slower frequency than IMU.
+            MavLinkHilGps gps;
+            gps.time_usec = usec;
+            gps.alt = static_cast<int32_t>(addNoise(122.0f,1) * 1E3);
+            gps.lat = static_cast<int32_t>(addNoise(47.642406f,0.000001f) * 1E7);
+            gps.lon = static_cast<int32_t>(addNoise(-122.140977f,0.000001f) * 1E7);
+            gps.eph = static_cast<uint16_t>(addNoise(1, 0.1f) * 100);
+            gps.epv = static_cast<uint16_t>(addNoise(1, 0.1f) * 100);
+            gps.fix_type = 3;
+            gps.satellites_visible = 10;
+            gps.vd = static_cast<int16_t>(addNoise(0, 0.1f) * 100); // cm/s
+            gps.ve = static_cast<int16_t>(addNoise(0, 0.1f) * 100); // cm/s
+            gps.vn = static_cast<int16_t>(addNoise(0, 0.1f) * 100); // cm/s
+            gps.vel = static_cast<int16_t>(addNoise(0, 0.2f) * 100);// cm/s
+            gps.cog = static_cast<int16_t>(addNoise(0, 0.3f) * 100); // degrees * 100
+            if (com != nullptr) {
+                com->sendMessage(gps);
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 }
 
@@ -1568,7 +1745,6 @@ void OrbitCommand::MeasureTime(float degrees)
         // degrees just flipped from 359 to 0.
         auto endTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         auto durationMs = endTime - startTime;
-        endTime = endTime;
         printf("Completed orbit %d is %f seconds\n", orbits++, (static_cast<float>(durationMs) / 1000.0f));
         startTime = endTime;
         halfWay = false;
@@ -1680,6 +1856,7 @@ bool SquareCommand::Parse(const std::vector<std::string>& args)
                     printf("invalid speed '%f', expecting 0.1 < speed < 10", speed_);
                     return false;
                 }
+				speed_ *= 0.8f; // hack to make it match real drone.
             }
             return true;
         }
@@ -2243,8 +2420,9 @@ bool FtpCommand::Parse(const std::vector<std::string>& args)
                 // local remote
                 source = args[1];
                 if (args.size() > 2) {
-                    std::string rel = normalize(args[1]);
+                    std::string rel = normalize(args[2]);
                     target = FileSystem::resolve(cwd, rel);
+                    target = toPX4Path(target);
                 }
                 else {
                     cmd = none;
@@ -2266,6 +2444,30 @@ bool FtpCommand::Parse(const std::vector<std::string>& args)
             else {
                 cmd = none;
                 printf("Missing remote file name\n");
+            }
+        }
+        else if (command == "mkdir") {
+            cmd = mkdir;
+            if (args.size() > 1) {
+                std::string rel = normalize(args[1]);
+                target = FileSystem::resolve(cwd, rel);
+                target = toPX4Path(target);
+            }
+            else {
+                cmd = none;
+                printf("Missing remote file path\n");
+            }
+        }
+        else if (command == "rmdir") {
+            cmd = rmdir;
+            if (args.size() > 1) {
+                std::string rel = normalize(args[1]);
+                target = FileSystem::resolve(cwd, rel);
+                target = toPX4Path(target);
+            }
+            else {
+                cmd = none;
+                printf("Missing remote file path\n");
             }
         }
     }
@@ -2298,6 +2500,12 @@ void FtpCommand::Execute(std::shared_ptr<MavLinkVehicle> com)
         break;
     case FtpCommand::remove:
         doRemove();
+        break;
+    case FtpCommand::mkdir:
+        doMkdir();
+        break;
+    case FtpCommand::rmdir:
+        doRmdir();
         break;
     default:
         break;
@@ -2335,7 +2543,8 @@ void FtpCommand::doList() {
     std::vector<MavLinkFileInfo> files;
 
     startMonitor();
-    client->list(progress, toPX4Path(source), files);
+    std::string dir = toPX4Path(source);
+    client->list(progress, dir, files);
     stopMonitor();
     printf("\n");
 
@@ -2453,7 +2662,7 @@ void FtpCommand::doPut() {
 void FtpCommand::doRemove() {
     std::string fsTarget = normalize(target);
     std::string leaf = FileSystem::getFileName(fsTarget);
-    if (leaf.size() > 0 && leaf[0] == '/' || leaf[0] == '\\') {
+    if (leaf.size() > 0 && (leaf[0] == '/' || leaf[0] == '\\')) {
         leaf = leaf.substr(1);
     }
     bool wildcards = false;
@@ -2508,6 +2717,35 @@ void FtpCommand::doRemove() {
         printf("\n");
     }
 
+    if (progress.error != 0) {
+        printf("remove failed\n");
+    }
+    else {
+        printf("ok\n");
+    }
+}
+
+
+void FtpCommand::doMkdir() {
+    printf("Creating directory %s ", target.c_str());
+    startMonitor();
+    client->mkdir(progress, target);
+    stopMonitor();
+    printf("\n");
+    if (progress.error != 0) {
+        printf("remove failed\n");
+    }
+    else {
+        printf("ok\n");
+    }
+}
+
+void FtpCommand::doRmdir() {
+    printf("Removing directory %s ", target.c_str());
+    startMonitor();
+    client->rmdir(progress, target);
+    stopMonitor();
+    printf("\n");
     if (progress.error != 0) {
         printf("remove failed\n");
     }

@@ -15,6 +15,9 @@
 #include "sensors/gps/GpsSimple.hpp"
 #include "sensors/magnetometer/MagnetometerSimple.hpp"
 
+//below includes are because of setPhysicsGroundTruth methog
+#include "physics/Environment.hpp"
+#include "physics/Kinematics.hpp"
 
 namespace msr { namespace airlib {
 
@@ -88,6 +91,12 @@ public: //interface
         return controller_.get();
     }
 
+    //below method is needed to support firmwares without state estimation. In future, we should probably remove this support.
+    virtual void initializePhysics(const Environment* environment, const Kinematics::State* kinematics)
+    {
+        //by default don't use it. If derived class needs this, it should override.
+    }
+
 protected: //must override by derived class
     //this method must clean up any previous initializations
     virtual void setup(Params& params, SensorCollection& sensors, unique_ptr<DroneControllerBase>& controller) = 0;
@@ -106,7 +115,6 @@ protected: //static utility functions for derived classes to use
 	static void initializeRotorQuadX(vector<RotorPose>& rotor_poses /* the result we are building */,
 		uint rotor_count /* must be 4 */, 
 		real_T arm_lengths[], 
-		real_T arm_angles[], 
 		real_T rotor_z /* z relative to center of gravity */)
 	{
 		Vector3r unit_z(0, 0, -1);  //NED frame

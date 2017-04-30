@@ -12,7 +12,7 @@ namespace msr { namespace airlib {
 
 class PhysicsBodyVertex : public UpdatableObject {
 protected:
-    virtual void setWrench(Wrench& wrench, real_T dt) = 0;
+    virtual void setWrench(Wrench& wrench) = 0;
 public:
     PhysicsBodyVertex()
     {
@@ -40,9 +40,9 @@ public:
         current_wrench_ = Wrench::zero();
     }
 
-    virtual void update(real_T dt) override
+    virtual void update() override
     {
-        setWrench(current_wrench_, dt);
+        setWrench(current_wrench_);
     }
     //*** End: UpdatableState implementation ***//
 

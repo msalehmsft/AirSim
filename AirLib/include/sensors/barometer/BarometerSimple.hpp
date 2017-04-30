@@ -22,28 +22,28 @@ public:
         pressure_factor.initialize(params_.pressure_factor_tau, params_.pressure_factor_sigma, Utils::nan<real_T>());
 
         uncorrelated_noise = RandomGeneratorGausianR(0.0f, params_.unnorrelated_noise_sigma);
-        correlated_noise.initialize(params_.correlated_noise_tau, params_.correlated_noise_sigma, 0.0f);
+        //correlated_noise.initialize(params_.correlated_noise_tau, params_.correlated_noise_sigma, 0.0f);
     }
 
     //*** Start: UpdatableState implementation ***//
     virtual void reset() override
     {
-        updateOutput(0);
+        updateOutput();
         pressure_factor.reset();
         correlated_noise.reset();
         uncorrelated_noise.reset();
     }
 
-    virtual void update(real_T dt) override
+    virtual void update() override
     {
-        updateOutput(dt);
+        updateOutput();
     }
     //*** End: UpdatableState implementation ***//
 
     virtual ~BarometerSimple() = default;
 
 private: //methods
-    void updateOutput(real_T dt)
+    void updateOutput()
     {
         Output output;
         const GroundTruth& ground_truth = getGroundTruth();
@@ -51,20 +51,17 @@ private: //methods
         auto altitude = ground_truth.environment->getState().geo_point.altitude;
         auto pressure = EarthUtils::getStandardPressure(altitude);
         //add drift in pressure
-        pressure_factor.update(dt);
+        pressure_factor.update();
         pressure += pressure * pressure_factor.getOutput();
         //add user specified offset
         pressure += EarthUtils::SeaLevelPressure - params_.qnh*100.0f;
+        pressure += uncorrelated_noise.next();
 
         output.pressure = pressure;
         //apply altimeter formula
         //https://en.wikipedia.org/wiki/Pressure_altitude
+        //TODO: use same formula as in driver code?
         output.altitude = (1 - pow(pressure / EarthUtils::SeaLevelPressure, 0.190284f)) * 145366.45f * 0.3048f;
-
-        //apply noise model
-        //correlated_noise.update(dt);
-        //output.altitude += correlated_noise.getOutput();
-        //output.altitude += uncorrelated_noise.next();
         output.qnh = params_.qnh;
 
         setOutput(output);

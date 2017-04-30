@@ -36,8 +36,22 @@ static const int pixhawkFMUV2OldBootloaderProductId = 22;     ///< Product ID fo
 static const int pixhawkFMUV1ProductId = 16;     ///< Product ID for PX4 FMU V1 board
 static const int RotorControlsCount = 8;
 
+class MavLinkLogViewerLog : public MavLinkLog
+{
+    std::shared_ptr<mavlinkcom::MavLinkNode> proxy_;
+public:
+    MavLinkLogViewerLog(std::shared_ptr<mavlinkcom::MavLinkNode> proxy) {
+        proxy_ = proxy;
+    }
+    void write(const mavlinkcom::MavLinkMessage& msg, uint64_t timestamp = 0) override {
+        MavLinkMessage copy;
+        ::memcpy(&copy, &msg, sizeof(MavLinkMessage));
+        proxy_->sendMessage(copy);
+    }
+};
+
 struct MavLinkDroneController::impl {
-    std::shared_ptr<mavlinkcom::MavLinkNode> logviewer_proxy_, qgc_proxy_;
+    std::shared_ptr<mavlinkcom::MavLinkNode> logviewer_proxy_, logviewer_out_proxy_, qgc_proxy_;
 
     size_t status_messages_MaxSize = 5000;
     
@@ -81,21 +95,21 @@ struct MavLinkDroneController::impl {
 
     //additional variables required for DroneControllerBase implementation
     //this is optional for methods that might not use vehicle commands
-    std::unique_ptr<mavlinkcom::MavLinkVehicle> mav_vehicle_;
+    std::shared_ptr<mavlinkcom::MavLinkVehicle> mav_vehicle_;
     int state_version_;
     mavlinkcom::VehicleState current_state;
     float target_height_;
     bool is_offboard_mode_;
     bool is_simulation_mode_;
     PidController thrust_controller_;
+    int hil_message_check_;
+    int sitl_message_check_;
 
     void initialize(const ConnectionInfo& connection_info, const SensorCollection* sensors, bool is_simulation)
     {
         connection_info_ = connection_info;
         sensors_ = sensors;
         is_simulation_mode_ = is_simulation;
-
-        mav_vehicle_.reset(new mavlinkcom::MavLinkVehicle(connection_info_.vehicle_sysid, connection_info_.vehicle_compid));
     }
 
     ConnectionInfo getMavConnectionInfo()
@@ -109,12 +123,6 @@ struct MavLinkDroneController::impl {
             // change -1 to 1 to 0 to 1.
             for (size_t i = 0; i < Utils::length(rotor_controls_); ++i) {
                 rotor_controls_[i] = (rotor_controls_[i] + 1.0f) / 2.0f;
-            }
-        }
-        else { // we have 0 to 1
-            //TODO: make normalization vehicle independent?
-            for (size_t i = 0; i < Utils::length(rotor_controls_); ++i) {
-                rotor_controls_[i] = Utils::clip(0.8f * rotor_controls_[i] + 0.20f, 0.0f, 1.0f);
             }
         }
     }
@@ -171,6 +179,18 @@ struct MavLinkDroneController::impl {
                 // error talking to log viewer, so don't keep trying, and close the connection also.
                 logviewer_proxy_->getConnection()->close();
                 logviewer_proxy_ = nullptr;
+            }
+
+            std::shared_ptr<mavlinkcom::MavLinkConnection> out_connection;
+            createProxy("LogViewerOut", connection_info_.logviewer_ip_address, connection_info_.logviewer_ip_sport, connection_info_.local_host_ip,
+                logviewer_out_proxy_, out_connection);
+            if (!sendTestMessage(logviewer_out_proxy_)) {
+                // error talking to log viewer, so don't keep trying, and close the connection also.
+                logviewer_out_proxy_->getConnection()->close();
+                logviewer_out_proxy_ = nullptr;
+            }
+            else {
+                mav_vehicle_->getConnection()->startLoggingSendMessage(std::make_shared<MavLinkLogViewerLog>(logviewer_out_proxy_));
             }
         }
         return logviewer_proxy_ != nullptr;
@@ -238,6 +258,8 @@ struct MavLinkDroneController::impl {
 
     void connect()
     {
+        hil_message_check_ = 0;
+        sitl_message_check_ = 0;
         createMavConnection(connection_info_);
         initializeMavSubscriptions();
     }
@@ -270,10 +292,12 @@ struct MavLinkDroneController::impl {
         hil_node_ = std::make_shared<MavLinkNode>(connection_info_.sim_sysid, connection_info_.sim_compid); 
         hil_node_->connect(connection_);
 
-        if (connection_info_.sitl_ip_address != "" && connection_info_.sitl_ip_port != 0) {
+        mav_vehicle_ = std::make_shared<mavlinkcom::MavLinkVehicle>(connection_info_.vehicle_sysid, connection_info_.vehicle_compid);
+
+        if (connection_info_.sitl_ip_address != "" && connection_info_.sitl_ip_port != 0 && connection_info_.sitl_ip_port != port) {
             // bugbug: the PX4 SITL mode app cannot receive commands to control the drone over the same mavlink connection
             // as the HIL_SENSOR messages, we must establish a separate mavlink channel for that so that DroneShell works.
-            auto sitlconnection = MavLinkConnection::connectRemoteUdp("sitl", connection_info_.local_host_ip, connection_info_.sitl_ip_address, connection_info_.sitl_ip_port);			
+            auto sitlconnection = MavLinkConnection::connectRemoteUdp("sitl", connection_info_.local_host_ip, connection_info_.sitl_ip_address, connection_info_.sitl_ip_port);		
             mav_vehicle_->connect(sitlconnection);
         }
         else {
@@ -307,7 +331,10 @@ struct MavLinkDroneController::impl {
         connection_->ignoreMessage(MavLinkAttPosMocap::kMessageId); //TODO: find better way to communicate debug pose instead of using fake Mocap messages
         hil_node_ = std::make_shared<MavLinkNode>(connection_info_.sim_sysid, connection_info_.sim_compid);
         hil_node_->connect(connection_);
+
+        mav_vehicle_ = std::make_shared<mavlinkcom::MavLinkVehicle>(connection_info_.vehicle_sysid, connection_info_.vehicle_compid);
         mav_vehicle_->connect(connection_); // in this case we can use the same connection.
+        mav_vehicle_->startHeartbeat();
     }
 
     mavlinkcom::MavLinkHilSensor getLastSensorMessage()
@@ -417,7 +444,7 @@ struct MavLinkDroneController::impl {
             throw std::logic_error("Attempt to send simulated sensor messages while not in simulation mode");
 
         mavlinkcom::MavLinkHilSensor hil_sensor;
-        hil_sensor.time_usec = static_cast<uint64_t>(Utils::getTimeSinceEpochMillis() * 1000);
+        hil_sensor.time_usec = static_cast<uint64_t>(Utils::getTimeSinceEpochNanos() / 1000.0);
         hil_sensor.xacc = acceleration.x();
         hil_sensor.yacc = acceleration.y();
         hil_sensor.zacc = acceleration.z();
@@ -439,11 +466,6 @@ struct MavLinkDroneController::impl {
             hil_node_->sendMessage(hil_sensor);
         }
 
-        // also forward this message to the log viewer so we can see it there also.
-        if (logviewer_proxy_ != nullptr) {
-            logviewer_proxy_->sendMessage(hil_sensor);
-        }
-
         std::lock_guard<std::mutex> guard(last_message_mutex_);
         last_sensor_message_ = hil_sensor;
     }
@@ -455,7 +477,7 @@ struct MavLinkDroneController::impl {
             throw std::logic_error("Attempt to send simulated GPS messages while not in simulation mode");
 
         mavlinkcom::MavLinkHilGps hil_gps;
-        hil_gps.time_usec = static_cast<uint64_t>(Utils::getTimeSinceEpochMillis() * 1000);
+        hil_gps.time_usec = static_cast<uint64_t>(Utils::getTimeSinceEpochNanos() / 1000.0);
         hil_gps.lat = static_cast<int32_t>(geo_point.latitude * 1E7);
         hil_gps.lon = static_cast<int32_t>(geo_point.longitude* 1E7);
         hil_gps.alt = static_cast<int32_t>(geo_point.altitude * 1000);
@@ -471,10 +493,6 @@ struct MavLinkDroneController::impl {
 
         if (hil_node_ != nullptr) {
             hil_node_->sendMessage(hil_gps);
-        }
-
-        if (logviewer_proxy_ != nullptr) {
-            logviewer_proxy_->sendMessage(hil_gps);
         }
 
         std::lock_guard<std::mutex> guard(last_message_mutex_);
@@ -506,6 +524,8 @@ struct MavLinkDroneController::impl {
         Utils::setValue(rotor_controls_, 0.0f);
         was_reset_ = false;
         debug_pose_ = Pose::nanPose();
+        hil_message_check_ = 0;
+        sitl_message_check_ = 0;
     }
 
     //*** Start: VehicleControllerBase implementation ***//
@@ -533,7 +553,7 @@ struct MavLinkDroneController::impl {
         return static_cast<const GpsBase*>(sensors_->getByType(SensorCollection::SensorType::Gps));
     }
 
-    void update(real_T dt)
+    void update()
     {
         if (sensors_ == nullptr || connection_ == nullptr || !connection_->isOpen())
             return;
@@ -698,14 +718,20 @@ struct MavLinkDroneController::impl {
             logviewer_proxy_->close();
             logviewer_proxy_ = nullptr;
         }
+
+        if (logviewer_out_proxy_ != nullptr) {
+            mav_vehicle_->getConnection()->stopLoggingSendMessage();
+            logviewer_out_proxy_->close();
+            logviewer_out_proxy_ = nullptr;
+        }
+
         if (qgc_proxy_ != nullptr) {
             qgc_proxy_->close();
             qgc_proxy_ = nullptr;
         }
         if (mav_vehicle_ != nullptr) {
             mav_vehicle_->close();
-            //do not remove reference otherwise we need to recreate when restarting
-            //mav_vehicle_ = nullptr;
+            mav_vehicle_ = nullptr;
         }
     }
 
@@ -754,11 +780,6 @@ struct MavLinkDroneController::impl {
         return VectorMath::toQuaternion(current_state.attitude.pitch, current_state.attitude.roll, current_state.attitude.yaw);
     }
 
-    double timestampNow()
-    {
-        return static_cast<double>(mav_vehicle_->getTimeStamp());
-    }
-
     //administrative
 
     bool armDisarm(bool arm, CancelableBase& cancelable_action)
@@ -803,7 +824,9 @@ struct MavLinkDroneController::impl {
     bool takeoff(float max_wait_seconds, CancelableBase& cancelable_action)
     {
         bool rc = false;
-        if (!mav_vehicle_->takeoff(getTakeoffZ(), 0.0f, 0.0f).wait(static_cast<int>(max_wait_seconds * 1000), &rc))
+        auto vec = getPosition();
+        float z = vec.z() + getTakeoffZ();
+        if (!mav_vehicle_->takeoff(z, 0.0f /* pitch */, 0.0f /* yaw */).wait(static_cast<int>(max_wait_seconds * 1000), &rc))
         {
             throw VehicleMoveException("TakeOff command - timeout waiting for response");
         }
@@ -811,8 +834,9 @@ struct MavLinkDroneController::impl {
             throw VehicleMoveException("TakeOff command rejected by drone");
         }
 
-        bool success = parent_->waitForZ(max_wait_seconds, getTakeoffZ(), getDistanceAccuracy(), cancelable_action);
-        return success;
+        //bool success = parent_->waitForZ(max_wait_seconds, z, getDistanceAccuracy(), cancelable_action);
+        //return success;
+        return true;
     }
 
     bool hover(CancelableBase& cancelable_action)
@@ -851,6 +875,8 @@ struct MavLinkDroneController::impl {
             throw VehicleMoveException("Cannot land safely with out a home position that tells us the home altitude.  Could fix this if we hook up a distance to ground sensor...");
         }
 
+        /*
+        // better control if this is decoupled (e.g. user might want to change their mind on the way down).
         float max_wait = 60;
         if (!parent_->waitForFunction([&]() {
             updateState();
@@ -858,7 +884,7 @@ struct MavLinkDroneController::impl {
         }, max_wait, cancelable_action))
         {
             throw VehicleMoveException("Drone hasn't reported a landing state");
-        }
+        }*/
         return true;
     }
 
@@ -948,6 +974,37 @@ struct MavLinkDroneController::impl {
         }
         MavLinkTelemetry data;
         connection_->getTelemetry(data);
+        if (data.messagesReceived == 0) {
+            hil_message_check_++;
+            if (hil_message_check_ == 100) {
+                addStatusMessage("not receiving any messages from HIL, please restart your HIL node and try again");
+            }
+        } else {
+            hil_message_check_ = 0;
+        }
+
+        // listen to the other mavlink connection also
+        auto mavcon = mav_vehicle_->getConnection();
+        if (mavcon != connection_) {
+            MavLinkTelemetry sitl;
+            mavcon->getTelemetry(sitl);
+
+            data.handlerMicroseconds += sitl.handlerMicroseconds;
+            data.messagesHandled += sitl.messagesHandled;
+            data.messagesReceived += sitl.messagesReceived;
+            data.messagesSent += sitl.messagesSent;
+            if (sitl.messagesReceived == 0)
+            {
+                sitl_message_check_++;
+                if (sitl_message_check_ == 100) {
+                    addStatusMessage("not receiving any messages from SITL, please restart your SITL app and try again");
+                }
+            }
+            else {
+                sitl_message_check_ = 0;
+            }
+        }
+
         data.renderTime = static_cast<long>(renderTime * 1000000);// microseconds
         logviewer_proxy_->sendMessage(data);
     }
@@ -973,7 +1030,10 @@ struct MavLinkDroneController::impl {
 
     void endOffboardMode()
     {
-        mav_vehicle_->releaseControl();
+        // bugbug: I removed this releaseControl because it makes back-to-back move operations less smooth.
+        // The side effect of this is that with some drones (e.g. PX4 based) the drone itself will timeout
+        // when you stop sending move commands and the behavior on timeout is then determined by the drone itself.
+        // mav_vehicle_->releaseControl();
         ensureSafeMode();
     }
 
@@ -984,12 +1044,12 @@ struct MavLinkDroneController::impl {
             return;
         }
 
-		// bugbug: there is a problem with this logic.  ensureSafeMode is called after a move* operation is compeleted,
-		// but that might be because another move operation just started.  The code below will kick us out of offboard
-		// mode and that will cause the next move operation to fail because the mode change is asynchronous so it will
-		// switch to loiter right after we try and start the next move operation which will look like the PX4 cancelled
-		// offbaord, when in fact it was us.  So we need to rethink this logic.  It should be possible to do back to
-		// back move operations without having to loiter in between.
+        // bugbug: there is a problem with this logic.  ensureSafeMode is called after a move* operation is compeleted,
+        // but that might be because another move operation just started.  The code below will kick us out of offboard
+        // mode and that will cause the next move operation to fail because the mode change is asynchronous so it will
+        // switch to loiter right after we try and start the next move operation which will look like the PX4 cancelled
+        // offbaord, when in fact it was us.  So we need to rethink this logic.  It should be possible to do back to
+        // back move operations without having to loiter in between.
 
         // bool r = false;
         // ok, we are flying, so let's try and hover where we are at.
@@ -1064,9 +1124,9 @@ void MavLinkDroneController::reset()
 {
     pimpl_->reset();
 }
-void MavLinkDroneController::update(real_T dt)
+void MavLinkDroneController::update()
 {
-    pimpl_->update(dt);
+    pimpl_->update();
 }
 real_T MavLinkDroneController::getVertexControlSignal(unsigned int rotor_index)
 {
@@ -1116,11 +1176,6 @@ GeoPoint MavLinkDroneController::getGpsLocation()
 Quaternionr MavLinkDroneController::getOrientation()
 {
     return pimpl_->getOrientation();
-}
-
-double MavLinkDroneController::timestampNow()
-{
-    return pimpl_->timestampNow();
 }
 
 //administrative

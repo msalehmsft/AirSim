@@ -44,14 +44,14 @@ public:
             physics_engine_->reset();
     }
 
-    virtual void update(real_T dt) override
+    virtual void update() override
     {
         //first update our objects
-        UpdatableContainer::update(dt);
+        UpdatableContainer::update();
 
         //now update kinematics state
         if (physics_engine_)
-            physics_engine_->update(dt);
+            physics_engine_->update();
     }
 
     virtual void reportState(StateReporter& reporter) override
@@ -90,9 +90,9 @@ public:
     }
 
     //async updater thread
-    void startAsyncUpdator(real_T period)
+    void startAsyncUpdator(double period)
     {
-        executor_.initialize(std::bind(&World::worldUpdatorAsync, this, std::placeholders::_1), period);
+        executor_.initialize(std::bind(&World::worldUpdatorAsync, this), period);
         executor_.start();
     }
     void stopAsyncUpdator()
@@ -109,10 +109,10 @@ public:
     }
 
 private:
-    bool worldUpdatorAsync(double dt)
+    bool worldUpdatorAsync()
     {
         try {
-            update(static_cast<real_T>(dt));
+            update();
         }
         catch(const std::exception& ex) {
             Utils::logError("Exception occurred while updating world: %s", ex.what());

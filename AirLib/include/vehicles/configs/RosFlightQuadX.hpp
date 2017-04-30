@@ -4,16 +4,22 @@
 #ifndef msr_airlib_vehicles_RosFlightQuadX_hpp
 #define msr_airlib_vehicles_RosFlightQuadX_hpp
 
-#include "vehicles/MultiRotorParams.hpp"
 #include "controllers/rosflight/RosFlightDroneController.hpp"
+#include "vehicles/MultiRotorParams.hpp"
+#include "controllers/Settings.hpp"
 
 
 namespace msr { namespace airlib {
 
 class RosFlightQuadX : public MultiRotorParams {
 public:
-    void initializePhysics(const Environment* environment, const Kinematics::State* kinematics)
+    RosFlightQuadX(Settings& settings)
     {
+    }
+
+    virtual void initializePhysics(const Environment* environment, const Kinematics::State* kinematics) override
+    {
+        //supply this to controller so it can use physics ground truth instead of state estimation (because ROSFlight doesn't have state estimation)
         static_cast<RosFlightDroneController*>(getController())->initializePhysics(environment_, kinematics_);
     }
 
@@ -44,7 +50,7 @@ protected:
         //setup rotor poses
         params.rotor_poses.clear();
         params.rotor_poses.emplace_back(Vector3r(0.230f, 0.1926f,  -0.0762f), Vector3r(0.0223925f, -0.02674078f,  -0.99939157f), RotorTurningDirection::RotorTurningDirectionCCW);
-        params.rotor_poses.emplace_back(Vector3r(-0.205, -0.1907f, -0.0762f), Vector3r(-0.02375588f, 0.02553726f, -0.99939157f), RotorTurningDirection::RotorTurningDirectionCCW);
+        params.rotor_poses.emplace_back(Vector3r(-0.205f, -0.1907f, -0.0762f), Vector3r(-0.02375588f, 0.02553726f, -0.99939157f), RotorTurningDirection::RotorTurningDirectionCCW);
         params.rotor_poses.emplace_back(Vector3r(0.205f, -0.1907f, -0.0762f), Vector3r(0.02375588f, 0.02553726f, -0.99939157f), RotorTurningDirection::RotorTurningDirectionCW);
         params.rotor_poses.emplace_back(Vector3r(-0.230f, 0.1926f, -0.0762f), Vector3r(-0.0223925f,  -0.02674078f, -0.99939157f), RotorTurningDirection::RotorTurningDirectionCW);
 

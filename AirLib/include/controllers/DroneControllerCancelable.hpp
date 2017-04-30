@@ -155,11 +155,10 @@ public:
         return controller_->getRCData();
     }
 
-    double timestampNow()
+    TTimePoint timestampNow()
     {
-        return controller_->timestampNow();
+        return controller_->clock()->nowNanos();
     }
-
     GeoPoint getHomePoint()
     {
         return controller_->getHomePoint();
@@ -184,7 +183,7 @@ public:
     std::string getServerDebugInfo()
     {
         //for now this method just allows to see if server was started
-        return std::to_string(Utils::getTimeSinceEpochMillis());
+        return std::to_string(Utils::getUnixTimeStamp());
     }
 
     void getStatusMessages(std::vector<std::string>& messages)

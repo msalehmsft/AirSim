@@ -124,8 +124,10 @@ bool DroneControllerBase::moveOnPath(const vector<Vector3r>& path, float velocit
     path3d.push_back(getPosition());
 
     std::ofstream flog;
-    if (log_to_file)
+    if (log_to_file_) {
         common_utils::FileSystem::createLogFile("MoveToPosition", flog);
+        flog << "seg_index\toffset\tx\ty\tz\tgoal_dist\tseg_index\toffset\tx\ty\tz\tlookahead\tlookahead_error\tseg_index\toffset\tx\ty\tz";
+    }
 
     Vector3r point;
     float path_length = 0;
@@ -154,6 +156,7 @@ bool DroneControllerBase::moveOnPath(const vector<Vector3r>& path, float velocit
     cur_path_loc.offset = 0;
     cur_path_loc.position = path3d[0];
 
+    float lookahead_error_increasing = 0;
     float lookahead_error = 0;
     Waiter waiter(getCommandPeriod());
 
@@ -223,10 +226,21 @@ bool DroneControllerBase::moveOnPath(const vector<Vector3r>& path, float velocit
                                                             //if adaptive lookahead is enabled the calculate lookahead error (see above fig)
             if (adaptive_lookahead) {
                 const Vector3r& actual_on_goal = goal_normalized * goal_dist;
-                lookahead_error = (actual_vect - actual_on_goal).norm() * adaptive_lookahead;
+                float error = (actual_vect - actual_on_goal).norm() * adaptive_lookahead;
+                if (error > lookahead_error) {
+                    lookahead_error_increasing++;
+                    if (lookahead_error_increasing > 100) {
+                        throw std::runtime_error("lookahead error is continually increasing so we do not have safe control, aborting moveOnPath operation");
+                    }
+                }
+                else { 
+                    lookahead_error_increasing = 0; 
+                }
+                lookahead_error = error;
             }
         }
         else {
+            lookahead_error_increasing = 0;
             goal_dist = 0;
             lookahead_error = 0; //this is not really required because we will exit
         }
@@ -235,7 +249,7 @@ bool DroneControllerBase::moveOnPath(const vector<Vector3r>& path, float velocit
         //     VectorMath::toString(getPosition()).c_str(), goal_dist, VectorMath::toString(cur_path_loc.position).c_str(),
         //     VectorMath::toString(next_path_loc.position).c_str(), lookahead_error);
 
-        if (log_to_file)
+        if (log_to_file_)
             flog << cur_path_loc.seg_index << "\t" << cur_path_loc.offset << "\t" << cur_path_loc.position.x() << "\t" << cur_path_loc.position.y() << "\t" << cur_path_loc.position.z() << "\t" << goal_dist << "\t";
 
         //if drone moved backward, we don't want goal to move backward as well
@@ -252,7 +266,7 @@ bool DroneControllerBase::moveOnPath(const vector<Vector3r>& path, float velocit
         //compute next target on path
         setNextPathPosition(path3d, path_segs, cur_path_loc, lookahead + lookahead_error, next_path_loc);
 
-        if (log_to_file) {
+        if (log_to_file_) {
             flog << cur_path_loc.seg_index << "\t" << cur_path_loc.offset << "\t" << cur_path_loc.position.x() << "\t" << cur_path_loc.position.y() << "\t" << cur_path_loc.position.z() << "\t" << lookahead  << "\t" << lookahead_error  << "\t";
             flog << next_path_loc.seg_index << "\t" << next_path_loc.offset << "\t" << next_path_loc.position.x() << "\t" << next_path_loc.position.y() << "\t" << next_path_loc.position.z() << std::endl;
         }
@@ -281,7 +295,7 @@ bool DroneControllerBase::rotateToYaw(float yaw, float margin, CancelableBase& c
 {
     YawMode yaw_mode(false, VectorMath::normalizeAngleDegrees(yaw));
     Waiter waiter(getCommandPeriod());
-	auto start_pos = getPosition();
+    auto start_pos = getPosition();
     bool is_yaw_reached;
     while ((is_yaw_reached = isYawWithinMargin(yaw, margin)) == false) {
         if (!moveToPosition(start_pos, yaw_mode))
@@ -299,7 +313,7 @@ bool DroneControllerBase::rotateByYawRate(float yaw_rate, float duration, Cancel
     if (duration <= 0)
         return true;
 
-	auto start_pos = getPosition();
+    auto start_pos = getPosition();
     YawMode yaw_mode(true, yaw_rate);
     Waiter waiter(getCommandPeriod(), duration);
     do {
@@ -364,7 +378,7 @@ bool DroneControllerBase::setSafety(SafetyEval::SafetyViolationType enable_reaso
 
 bool DroneControllerBase::moveByManual(float vx_max, float vy_max, float z_min, DrivetrainType drivetrain, const YawMode& yaw_mode, float duration, CancelableBase& cancelable_action)
 {
-    const float kMaxMessageAge = 1, kMaxVelocity = 2, trim_duration = 1, kMinCountForTrim = 10, kMaxTrim = 100, kMaxRCValue = 10000;
+    const float kMaxMessageAge = 10 * 1E6 /* 10 ms */, kMaxVelocity = 2, trim_duration = 1, kMinCountForTrim = 10, kMaxTrim = 100, kMaxRCValue = 10000;
 
     if (duration <= 0)
         return true;
@@ -400,7 +414,7 @@ bool DroneControllerBase::moveByManual(float vx_max, float vy_max, float z_min, 
     do {
 
         RCData rc_data = getRCData();
-        double age = timestampNow() - rc_data.timestamp;
+        TTimeDelta age = clock()->nowNanos() - rc_data.timestamp;
         if (age <= kMaxMessageAge) {
             rc_data.subtract(rc_data_trims);
 

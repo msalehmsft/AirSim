@@ -41,10 +41,12 @@
     </Window.Resources>
     <Window.CommandBindings>
         <CommandBinding Command="Open" Executed="OnOpenFileCommand"/>
+        <CommandBinding Command="Paste" Executed="OnPaste"/>
     </Window.CommandBindings>
 
     <Window.InputBindings>
         <KeyBinding Command="Open" Key="O" Modifiers="Control"/>
+        <KeyBinding Command="Paste" Key="V" Modifiers="Control"/>
     </Window.InputBindings>
     <Grid Style="{StaticResource AppGridBackground}">
 
@@ -62,6 +64,8 @@
 
         <Grid  Grid.ColumnSpan="2"  Style="{StaticResource AppBarGrid}" >
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
@@ -97,7 +101,9 @@
             </ToggleButton>
             <Button x:Name="RecordButton" Style="{StaticResource AppBarButtonStyle}" Grid.Column="8" Click="OnRecord">&#xE102;</Button>
 
-            <local:ConnectorControl x:Name="ConnectorControl" Grid.Column="9" Padding="0,15,0,0" Width="48" Height="48" ToolTip="Connection" MouseLeftButtonDown="OnConnectorClick" />
+            <Button x:Name="SettingsButton" Style="{StaticResource AppBarButtonStyle}" Grid.Column="9" Click="OnSettings">&#xE115;</Button>
+            
+            <local:ConnectorControl x:Name="ConnectorControl" Grid.Column="11" Padding="0,15,0,0" Width="48" Height="48" ToolTip="Connection" MouseLeftButtonDown="OnConnectorClick" />
         </Grid>
 
         <ListView x:Name="FlightView" Grid.Row="1" Grid.ColumnSpan="2"
@@ -123,6 +129,11 @@
 
         <map:Map x:Name="myMap" Grid.Row="2" Grid.Column="1" Visibility="Collapsed" Mode="AerialWithLabels"
                          CredentialsProvider="VruKH10vX7v1jPmLcmVO~C_GUBuKIpJlWkqyst1nxfA~AqHtLM_1ZkuoKFMCKyhdWjyViiDNWnP54DmROtIGcrzLHfe_edxje0RR3N5OIsqT" >
+            <map:Map.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Test" Click="OnMapTest"/>
+                </ContextMenu>
+            </map:Map.ContextMenu>
         </map:Map>
 
         <local:MeshViewer x:Name="ModelViewer" Grid.Row="2" Grid.Column="1" BorderThickness="0"  Visibility="Collapsed"
@@ -144,7 +155,10 @@
 
         <local:ChannelSelector x:Name="ConnectionPanel" Grid.Row="2" Grid.Column="1" Width="300" HorizontalAlignment="Right" Visibility="Collapsed">
         </local:ChannelSelector>
-                
+
+        <local:AppSettings x:Name="AppSettingsPanel" Grid.Row="2" Grid.Column="1" Width="300" HorizontalAlignment="Right" Visibility="Collapsed">
+        </local:AppSettings>
+
 
         <Border Grid.ColumnSpan="2" Grid.Row="4" Style="{StaticResource AppStatusBorder}">
             <TextBlock x:Name="StatusText" Text=""  Margin="5" />

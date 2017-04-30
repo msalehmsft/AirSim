@@ -46,9 +46,9 @@ public:
         if (keep_running_) {
             keep_running_ = false;
             try {
-				if (th_.joinable()) {
-					th_.join();
-				}
+                if (th_.joinable()) {
+                    th_.join();
+                }
             }
             catch(const std::system_error& /* e */)
             { }
@@ -66,23 +66,6 @@ public:
         //right now this is not implemented for performance and that
         //return of this function is purely informational/debugging purposes
         return sleep_time_avg_;
-    }
-
-    static void sleep_for(double dt)
-    {
-        /*
-            This is spin loop implementation which may be suitable for sub-millisecond resolution.
-            //TODO: investigate below alternatives
-            On Windows we can use multimedia timers however this requires including entire Win32 header.
-            On Linux we can use nanosleep however below 2ms delays in real-time scheduler settings this 
-                probbaly does spin loop anyway.
-            
-        */
-        static constexpr duration<double> MinSleepDuration(0);
-        clock::time_point start = clock::now();
-        while (duration<double>(clock::now() - start).count() < dt) {
-            std::this_thread::sleep_for(MinSleepDuration);
-        }
     }
 
     unsigned long getPeriodCount()
@@ -104,6 +87,23 @@ private:
     template <typename T>
     using duration = std::chrono::duration<T>;
 
+    static void sleep_for(double dt)
+    {
+        /*
+        This is spin loop implementation which may be suitable for sub-millisecond resolution.
+        //TODO: investigate below alternatives
+        On Windows we can use multimedia timers however this requires including entire Win32 header.
+        On Linux we can use nanosleep however below 2ms delays in real-time scheduler settings this 
+        probbaly does spin loop anyway.
+
+        */
+        static constexpr duration<double> MinSleepDuration(0);
+        clock::time_point start = clock::now();
+        while (duration<double>(clock::now() - start).count() < dt) {
+            std::this_thread::sleep_for(MinSleepDuration);
+        }
+    }
+
     void executorLoop()
     {
         clock::time_point call_end = clock::now();
@@ -113,9 +113,9 @@ private:
             
             if (period_count_ > 0) {
                 bool result = callback_(since_last_call.count());
-				if (!result) {
-					keep_running_ = result;
-				}
+                if (!result) {
+                    keep_running_ = result;
+                }
             }
             
             call_end = clock::now();

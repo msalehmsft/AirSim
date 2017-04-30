@@ -8,7 +8,6 @@
 #include "../serial_com/UdpClientPort.hpp"
 #include <exception>
 #include <cstring>
-#include <thread>
 using namespace mavlink_utils;
 
 using namespace mavlinkcom_impl;
@@ -107,8 +106,8 @@ enum PX4_CUSTOM_SUB_MODE_AUTO {
 #define MAVLINK_MSG_SET_POSITION_TARGET_LOITER			    0x3000
 #define MAVLINK_MSG_SET_POSITION_TARGET_IDLE			    0x4000
 
-MavLinkVehicleImpl::MavLinkVehicleImpl(int system_id, int component_id)
-	: MavLinkNodeImpl(system_id, component_id)
+MavLinkVehicleImpl::MavLinkVehicleImpl(int localSystemId, int localComponentId)
+	: MavLinkNodeImpl(localSystemId, localComponentId)
 {
 }
 
@@ -179,17 +178,20 @@ void MavLinkVehicleImpl::handleMessage(std::shared_ptr<MavLinkConnection> connec
 			bool isOffboard = (mode == PX4_CUSTOM_MAIN_MODE_OFFBOARD);
 			if (vehicle_state_.controls.offboard != isOffboard) {
 				vehicle_state_.controls.offboard = isOffboard;
+                Utils::logMessage("MavLinkVehicle: is no longer in offboard mode\n");
 			}
-            if (!isOffboard && (requested_mode_ != mode)) {
-                if (control_requested_) {
+            if (!isOffboard && (requested_mode_ != custom) && (custom != previous_mode_)) {
+                if (control_request_sent_) {
                     // user may have changed modes on us! So we need to honor that and not
                     // try and take it back.
                     vehicle_state_.controls.offboard = false;
                     control_requested_ = false;
+					control_request_sent_ = false;
 					Utils::logMessage("MavLinkVehicle: detected mode change (mode=%d, submode=%d), will stop trying to do offboard control\n",
 						mode, submode);
                 }
             }
+			previous_mode_ = custom;
 		}
 	}
 		break;
@@ -466,7 +468,9 @@ AsyncResult<bool> MavLinkVehicleImpl::armDisarm(bool arm)
 
 AsyncResult<bool> MavLinkVehicleImpl::takeoff(float z, float pitch, float yaw)
 {
-	float targetAlt = vehicle_state_.home.global_pos.alt - z;
+    // careful here, we are doing a tricky conversion from local coordinates to global coordinates.
+    float deltaZ = z - vehicle_state_.local_est.pos.z;
+	float targetAlt = vehicle_state_.home.global_pos.alt - deltaZ;
 	Utils::logMessage("Take off to %f", targetAlt);
 	MavCmdNavTakeoff cmd{};
 	cmd.MinimumPitch = pitch;
@@ -553,6 +557,7 @@ bool MavLinkVehicleImpl::hasOffboardControl()
 void MavLinkVehicleImpl::releaseControl()
 {
     control_requested_ = false;
+	control_request_sent_ = false;
     vehicle_state_.controls.offboard = false;
 	MavCmdNavGuidedEnable cmd{};
 	cmd.OnOff = 0;
@@ -578,7 +583,7 @@ void MavLinkVehicleImpl::checkOffboard()
             offboardIdle();
         }
 
-		Utils::logMessage("MavLinkVehicleImpl::checkOffboard: sending MavCmdNavGuidedEnable \n");
+		Utils::logMessage("MavLinkVehicleImpl::checkOffboard: sending MavCmdNavGuidedEnable \n");		
         // now the command should succeed.
         bool r = false;
         MavCmdNavGuidedEnable cmd{};
@@ -586,6 +591,7 @@ void MavLinkVehicleImpl::checkOffboard()
         // Note: we can't wait for ACK here, I've tried it.  The ACK takes too long to get back to
         // us by which time the PX4 times out offboard mode!!
         sendCommand(cmd);
+		control_request_sent_ = true;
     }
 }
 
@@ -651,6 +657,7 @@ AsyncResult<bool> MavLinkVehicleImpl::setMode(int mode, int customMode, int cust
 {
 	// this mode change take precedence over offboard mode.
 	control_requested_ = false;
+	control_request_sent_ = false;
 
     if ((vehicle_state_.mode & static_cast<int>(MAV_MODE_FLAG::MAV_MODE_FLAG_HIL_ENABLED)) != 0) {
         mode |= static_cast<int>(MAV_MODE_FLAG::MAV_MODE_FLAG_HIL_ENABLED); // must preserve this flag.
@@ -658,7 +665,7 @@ AsyncResult<bool> MavLinkVehicleImpl::setMode(int mode, int customMode, int cust
     if ((vehicle_state_.mode & static_cast<uint8_t>(MAV_MODE_FLAG::MAV_MODE_FLAG_SAFETY_ARMED)) != 0) {
         mode |= static_cast<int>(MAV_MODE_FLAG::MAV_MODE_FLAG_SAFETY_ARMED); // must preserve this flag.
     }
-    requested_mode_ = mode;
+    requested_mode_ = (customMode & 0xff) + ((customSubMode & 0xff) << 8);
     MavCmdDoSetMode cmd{};
     cmd.Mode = static_cast<float>(mode);
     cmd.CustomMode = static_cast<float>(customMode);

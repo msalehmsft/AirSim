@@ -31,7 +31,6 @@ public:
     struct ConnectionInfo {
         /* Default values are requires so uninitialized instance doesn't have random values */
 
-        std::string vehicle_name = "Pixhawk";
         bool use_serial = true; // false means use UDP instead
         //Used to connect via HITL: needed only if use_serial = true
         std::string serial_port = "*";
@@ -48,6 +47,7 @@ public:
 
         // The log viewer can be on a different machine, so you can configure it's ip address and port here.
         int logviewer_ip_port = 14388;
+        int logviewer_ip_sport = 14389; // for logging all messages we send to the vehicle.
         std::string logviewer_ip_address = "127.0.0.1";
 
         // The QGroundControl app can be on a different machine, so you can configure it's ip address and port here.
@@ -86,7 +86,7 @@ public:
 
     //*** Start: VehicleControllerBase implementation ***//
     virtual void reset() override;
-    virtual void update(real_T dt) override;
+    virtual void update() override;
     virtual void start() override;
     virtual void stop() override;
     virtual size_t getVertexCount() override;
@@ -108,7 +108,6 @@ public:
     Quaternionr getOrientation() override;
     RCData getRCData() override;
     void setRCData(const RCData& rcData) override;
-    double timestampNow() override;
 
     bool armDisarm(bool arm, CancelableBase& cancelable_action) override;
     bool takeoff(float max_wait_seconds, CancelableBase& cancelable_action) override;
