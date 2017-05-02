@@ -61,18 +61,30 @@ namespace MavLinkUwp
 		int _subscription = 0;
 
         void HasLocalPosition();
+		void TakeControl();
 
     public:
         UwpMavLink();
 
-		double getAltitudeRelative();
+		double getLatOrigin();
+		double getLonOrigin();
+
+		double getAltitudeLocal();
 		double getAltitudeGlobal();
 		double getBatteryVoltage();
+		double getBatteryRemaining();
 
-        bool connectToMavLink(Windows::Storage::Streams::DataWriter^ w, Windows::Storage::Streams::DataReader^ r);
+
+		double getLocalX();
+		double getLocalY();
+		double getHeading();
+		double getPitch();
+		double getRoll();
+
+		bool connectToMavLink(Windows::Storage::Streams::DataWriter^ w, Windows::Storage::Streams::DataReader^ r);
         bool arm();
         bool disarm();
-        bool takeoff(float z);
+        bool takeoff(double z);
         bool land();
         bool Goto(float x, float y, float z);
 

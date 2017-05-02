@@ -353,65 +353,6 @@ void MavLinkConnectionImpl::join(std::shared_ptr<MavLinkConnection> remote, bool
 
 void MavLinkConnectionImpl::readPackets()
 {
-<<<<<<< HEAD
-	CurrentThread::setMaximumPriority();
-	std::shared_ptr<Port> safePort = this->port;
-	mavlink_message_t msg;
-	mavlink_status_t status;
-	mavlink_status_t statusBuffer; // intermediate state
-	mavlink_message_t msgBuffer; // intermediate state.
-	const int MAXBUFFER = 512;
-	uint8_t* buffer = new uint8_t[MAXBUFFER];
-	statusBuffer.parse_state = MAVLINK_PARSE_STATE_IDLE;
-	int channel = 0;
-	int hr = 0;
-
-	while (hr == 0 && con_ != nullptr && !closed)
-	{
-		int read = 0;
-		if (safePort->isClosed())
-		{
-			// hmmm, wait till it is opened?
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
-			continue;
-		}
-
-		int count = safePort->read(buffer, MAXBUFFER);
-		if (count <= 0) {
-			// error? well let's try again, but we should be careful not to spin too fast and kill the CPU
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-			continue;
-		}
-		
-		for (int i = 0; i < count; i++)
-		{
-			uint8_t frame_state = mavlink_frame_char_buffer(&msgBuffer, &statusBuffer, buffer[i], &msg, &status);
-
-			if (frame_state == MAVLINK_FRAMING_INCOMPLETE) {
-				continue;
-			}
-			else if (frame_state == MAVLINK_FRAMING_BAD_CRC) {
-				std::lock_guard<std::mutex> guard(telemetry_mutex_);
-				telemetry_.crcErrors++;
-			}
-			else if (frame_state == MAVLINK_FRAMING_OK)
-			{
-				int msgId = msg.msgid;
-
-				// pick up the sysid/compid of the remote node we are connected to.
-				if (other_system_id == -1) {
-					other_system_id = msg.sysid;
-					other_component_id = msg.compid;
-				}
-
-				if (con_ != nullptr && !closed)
-				{
-					{
-						std::lock_guard<std::mutex> guard(telemetry_mutex_);
-						telemetry_.messagesReceived++;
-					}
-					// queue event for publishing.
-=======
     CurrentThread::setMaximumPriority();
     std::shared_ptr<Port> safePort = this->port;
     mavlink_message_t msg;
@@ -473,7 +414,6 @@ void MavLinkConnectionImpl::readPackets()
                         telemetry_.messagesReceived++;
                     }
                     // queue event for publishing.
->>>>>>> refs/remotes/Microsoft/master
                     {
                         std::lock_guard<std::mutex> guard(msg_queue_mutex_);
                         MavLinkMessage message;

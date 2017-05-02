@@ -8,6 +8,7 @@
 #include <Cfgmgr32.h>
 #define INITGUID
 #include <propkey.h>
+#include <devpkey.h>
 #include <string>
 
 using namespace mavlinkcom;

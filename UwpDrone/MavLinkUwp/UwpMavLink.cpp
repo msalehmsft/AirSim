@@ -55,71 +55,10 @@ UwpMavLink::UwpMavLink()
 	globallocalconverter_init(0, 0, 0, GetTickCount64());
 }
 
-
-
 void UwpMavLink::UwpMavLinkPort::connect(DataWriter^ w, DataReader^ r)
 {
 	_writer = w;
 	_reader = r;
-
-	/*
-	Platform::String^ selector = SerialDevice::GetDeviceSelector();
-	DeviceInformationCollection^ deviceCollection;
-	create_task(DeviceInformation::FindAllAsync(selector)).then([&](DeviceInformationCollection^ dc)
-	{
-		deviceCollection = dc;
-	}).wait();
-		
-
-	if (deviceCollection->Size == 0)
-		return;
-
-	for (unsigned int i = 0; i < deviceCollection->Size; ++i)
-	{
-		std::wstring name(deviceCollection->GetAt(i)->Name->Data());
-		std::wstring id(deviceCollection->GetAt(i)->Id->Data());
-
-		if (name.find_first_of(identifyingSubStr) != std::wstring::npos || 
-			id.find_first_of(identifyingSubStr) != std::wstring::npos)
-		{
-			create_task(SerialDevice::FromIdAsync(deviceCollection->GetAt(i)->Id)).then([&](SerialDevice^ device)
-			{
-				_device = device;
-				if (_device != nullptr)
-				{
-					TimeSpan ts;
-					ts.Duration = 5 * 1000000;
-
-					_device->BaudRate = 115200;
-					_device->Parity = SerialParity::None;
-					_device->DataBits = 8;
-					_device->StopBits = SerialStopBitCount::One;
-					_device->Handshake = SerialHandshake::None;
-					_device->ReadTimeout = ts;
-					_device->WriteTimeout = ts;
-					_device->IsRequestToSendEnabled = false;
-					//_device->IsDataTerminalReadyEnabled = false;
-
-					writer = ref new DataWriter(_device->OutputStream);
-					reader = ref new DataReader(_device->InputStream);
-					reader->InputStreamOptions = InputStreamOptions::Partial;
-
-				}
-			}).then([&]()
-			{
-				auto ret = reader->LoadAsync(1);
-				create_task(ret).then([&](unsigned int bytes)
-				{
-					uint8_t buf[50];
-					reader->ReadBytes(Platform::ArrayReference<BYTE>(buf, 50));
-				});
-
-			});
-
-			return;
-		}
-	}
-	*/
 }
 
 // write to the port, return number of bytes written or -1 if error.
@@ -301,9 +240,10 @@ bool UwpMavLink::disarm()
     return true;
 }
 
-bool UwpMavLink::takeoff(float z)
+bool UwpMavLink::takeoff(double z)
 {
-	_vehicle->takeoff(z);
+	const VehicleState& state = _vehicle->getVehicleState();
+	_vehicle->takeoff((float)z, 0.0f, state.global_est.heading);
 
 	return true;
 }
@@ -322,7 +262,18 @@ void UwpMavLink::FlyToHeight(float z)
 	MoveAltHold(state.local_est.pos.x, state.local_est.pos.x, z, state.global_est.heading, false);
 }
 
-double UwpMavLink::getAltitudeRelative()
+double UwpMavLink::getLatOrigin()
+{
+	return kMyLat;
+}
+
+double UwpMavLink::getLonOrigin()
+{
+	return kMyLon;
+}
+
+
+double UwpMavLink::getAltitudeLocal()
 {
 	const VehicleState& state = _vehicle->getVehicleState();
 
@@ -333,7 +284,7 @@ double UwpMavLink::getAltitudeGlobal()
 {
 	const VehicleState& state = _vehicle->getVehicleState();
 
-	return state.altitude.altitude_local;
+	return state.global_est.alt_ground;
 }
 
 double UwpMavLink::getBatteryVoltage()
@@ -344,7 +295,53 @@ double UwpMavLink::getBatteryVoltage()
 	return voltsInMillivolts / 1000.0;	// return volts
 }
 
+double UwpMavLink::getBatteryRemaining()
+{
+	const VehicleState& state = _vehicle->getVehicleState();
 
+	return state.stats.battery_remaining;
+}
+
+double UwpMavLink::getPitch()
+{
+	const VehicleState& state = _vehicle->getVehicleState();
+
+	return state.attitude.pitch;
+}
+
+double UwpMavLink::getRoll()
+{
+	const VehicleState& state = _vehicle->getVehicleState();
+
+	return state.attitude.roll;
+}
+
+double UwpMavLink::getLocalX()
+{
+	return x;
+}
+
+double UwpMavLink::getLocalY()
+{
+	return y;
+}
+
+double UwpMavLink::getHeading()
+{
+	const VehicleState& state = _vehicle->getVehicleState();
+
+	return state.global_est.heading;
+}
+
+void UwpMavLink::TakeControl()
+{
+	if (!requestedControl) 
+	{
+		// control works better if we get about 50 of these per second (20ms interval, if we can).
+		_vehicle->requestControl();
+		requestedControl = true;
+	}
+}
 
 bool UwpMavLink::Goto(float x, float y, float z)
 {
@@ -370,6 +367,8 @@ bool UwpMavLink::Goto(float x, float y, float z)
         tz = z;
     }
 
+	TakeControl();
+
     return true;
 }
 
@@ -390,6 +389,8 @@ void UwpMavLink::Goto(float targetX, float targetY, float targetZ, float speed, 
     theading = heading;
     targetSpeed = speed;
     targetReached = false;
+
+	TakeControl();
 }
 
 void UwpMavLink::Move(float targetvx, float targetvy, float targetvz, float heading, bool isYaw)
@@ -403,6 +404,7 @@ void UwpMavLink::Move(float targetvx, float targetvy, float targetvz, float head
     tvz = targetvz;
     is_yaw = isYaw;
     theading = heading;
+	TakeControl();
 }
 
 void UwpMavLink::MoveAltHold(float targetvx, float targetvy, float targetZ, float heading, bool isYaw)
@@ -410,13 +412,14 @@ void UwpMavLink::MoveAltHold(float targetvx, float targetvy, float targetZ, floa
     targetPosition = false;
     targetVelocity = false;
     targetVelocityAltHold = true;
+	paused = false;
     tvx = targetvx;
     tvy = targetvy;
     tz = targetZ;
     is_yaw = isYaw;
     theading = heading;
+	TakeControl();
 }
-
 
 void UwpMavLink::setGPS(double xCM, double yCM, double zCM)
 {
@@ -435,8 +438,8 @@ void UwpMavLink::setGPS(double xCM, double yCM, double zCM)
 	hilGPS.alt = (int32_t) std::round(alt  * 1000.0f);	// alt is now in meters
 	hilGPS.lat = (int32_t)(lat * 1e7);
 	hilGPS.lon = (int32_t)(lon * 1e7);
-	hilGPS.eph = static_cast<uint16_t>(0.3 * 100);
-	hilGPS.epv = static_cast<uint16_t>(0.4 * 100);
+	hilGPS.eph = static_cast<uint16_t>(0.01 * 100);
+	hilGPS.epv = static_cast<uint16_t>(0.01 * 100);
 	hilGPS.vel = 0; // unknown
 	hilGPS.cog = 0; // unknown
 	hilGPS.fix_type = 3;	// because Chris says so
@@ -444,6 +447,6 @@ void UwpMavLink::setGPS(double xCM, double yCM, double zCM)
 	hilGPS.timestamp = static_cast<uint64_t>(getTimeSinceEpochMillis());
 	hilGPS.time_usec = static_cast<uint64_t>(getTimeSinceEpochMillis() * 1000);
 
-	//_com->sendMessage(hilGPS);
+	_com->sendMessage(hilGPS);
 }
 
