@@ -74,6 +74,8 @@ namespace MavLinkUwp
 		double getBatteryVoltage();
 		double getBatteryRemaining();
 
+		int GetVehicleStateVersion();
+
 
 		double getLocalX();
 		double getLocalY();

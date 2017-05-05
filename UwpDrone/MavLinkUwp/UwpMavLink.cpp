@@ -29,6 +29,8 @@ static const int pixhawkFMUV1ProductId = 16;     ///< Product ID for PX4 FMU V1 
 
 static const std::wstring intelMavLink(L"UART0");
 
+uint16_t distanceSensor;
+
 const int kLocalSystemId = 166;
 const int kLocalComponentId = 1;
 
@@ -203,6 +205,14 @@ bool UwpMavLink::connectToMavLink(DataWriter^ w, DataReader^ r)
 			yawSpeed = att.yawspeed;
 			break;
 		}
+		case MavLinkDistanceSensor::kMessageId:
+		{
+			MavLinkDistanceSensor ds;
+			ds.decode(msg);
+
+			distanceSensor = ds.current_distance;
+			break;
+		}
 		default:
 			break;
 		}
@@ -210,6 +220,7 @@ bool UwpMavLink::connectToMavLink(DataWriter^ w, DataReader^ r)
 
 	// control works better if we get about 50 of these per second (20ms interval, if we can).
 	_vehicle->setMessageInterval(static_cast<int>(MavLinkMessageIds::MAVLINK_MSG_ID_LOCAL_POSITION_NED), 50);
+	_vehicle->setMessageInterval(static_cast<int>(MavLinkMessageIds::MAVLINK_MSG_ID_DISTANCE_SENSOR), 50);
 
     return _com != nullptr;
 }
@@ -272,12 +283,15 @@ double UwpMavLink::getLonOrigin()
 	return kMyLon;
 }
 
+int UwpMavLink::GetVehicleStateVersion()
+{
+	return _vehicle->getVehicleStateVersion();
+}
+
 
 double UwpMavLink::getAltitudeLocal()
 {
-	const VehicleState& state = _vehicle->getVehicleState();
-
-	return state.altitude.altitude_local;
+	return distanceSensor;
 }
 
 double UwpMavLink::getAltitudeGlobal()
